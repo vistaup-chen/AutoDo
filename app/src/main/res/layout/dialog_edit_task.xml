@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- 任务名称 -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="任务名称">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_task_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- 包名 -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="应用包名">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_package_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- 描述 -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="操作流程描述">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_description"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textMultiLine"
+                android:minLines="3"
+                android:gravity="top" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- AI 解析按钮 -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_ai_parse"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="AI 解析为步骤"
+            android:layout_marginTop="8dp"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            app:icon="@android:drawable/ic_menu_search" />
+
+        <!-- 加载指示器 -->
+        <LinearLayout
+            android:id="@+id/layout_loading"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_marginTop="16dp"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <ProgressBar
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:indeterminate="true" />
+
+            <TextView
+                android:id="@+id/tv_loading_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="正在解析..."
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:layout_marginTop="8dp" />
+
+        </LinearLayout>
+
+        <!-- 步骤预览列表（只读） -->
+        <LinearLayout
+            android:id="@+id/layout_step_preview"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="解析结果（只读，点击下方按钮编辑）："
+                android:textSize="12sp"
+                android:textColor="#757575"
+                android:textStyle="bold" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rv_steps_readonly"
+                android:layout_width="match_parent"
+                android:layout_height="150dp"
+                android:layout_marginTop="4dp"
+                android:background="#F5F5F5"
+                android:nestedScrollingEnabled="false" />
+
+        </LinearLayout>
+
+        <!-- 编辑动作按钮 -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_edit_actions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="编辑动作"
+            android:layout_marginTop="8dp"
+            android:visibility="gone"
+            app:icon="@android:drawable/ic_menu_manage" />
+
+    </LinearLayout>
+</ScrollView>

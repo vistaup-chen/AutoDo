@@ -1,0 +1,436 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary"
+        app:title="设置"
+        app:titleTextColor="#FFFFFF"
+        app:navigationIcon="@android:drawable/ic_menu_revert" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- 文本模型设置 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardElevation="2dp"
+                app:cardCornerRadius="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="文本模型 (思考)"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorPrimary" />
+
+                    <!-- API 地址 -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:hint="API 地址">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_text_api_base"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="http://127.0.0.1:8080/v1" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- 模型名称 -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="模型名称">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_text_model_name"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Qwen2.5-3B-Instruct" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- API Key -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="API Key (本地模型填 EMPTY)">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_text_api_key"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="EMPTY" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- 文本模型多模型列表 -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="备用文本模型（自动切换）"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:textColor="#666666" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/rv_text_models"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:background="#F5F5F5"
+                        android:maxHeight="160dp"
+                        android:nestedScrollingEnabled="false" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_add_text_model"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="添加备用文本模型"
+                        android:textSize="12sp"
+                        android:minHeight="36dp"
+                        android:layout_marginTop="4dp"
+                        app:icon="@android:drawable/ic_input_add"
+                        style="@style/Widget.Material3.Button.TextButton" />
+
+                    <!-- 统一模型（文本/视觉共用同一模型） -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_marginTop="12dp"
+                        android:background="#E0E0E0" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center_vertical">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="文本/视觉共用同一模型"
+                                android:textSize="14sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="开启后视觉识别将使用上述文本模型（适合多模态模型）"
+                                android:textSize="12sp"
+                                android:textColor="#666666" />
+                        </LinearLayout>
+
+                        <com.google.android.material.materialswitch.MaterialSwitch
+                            android:id="@+id/switch_unified_model"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 视觉模型设置 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_vision_model"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardElevation="2dp"
+                app:cardCornerRadius="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="视觉模型 (识图)"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorPrimary" />
+
+                    <!-- API 地址 -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:hint="API 地址">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_vision_api_base"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="http://127.0.0.1:8081/v1" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- 模型名称 -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="模型名称">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_vision_model_name"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Qwen2-VL-2B-Instruct" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- API Key -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="API Key">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_vision_api_key"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="EMPTY" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- 视觉模型多模型列表 -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="备用视觉模型（自动切换）"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:textColor="#666666" />
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/rv_vision_models"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:background="#F5F5F5"
+                        android:maxHeight="160dp"
+                        android:nestedScrollingEnabled="false" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_add_vision_model"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="添加备用视觉模型"
+                        android:textSize="12sp"
+                        android:minHeight="36dp"
+                        android:layout_marginTop="4dp"
+                        app:icon="@android:drawable/ic_input_add"
+                        style="@style/Widget.Material3.Button.TextButton" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 执行参数 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardElevation="2dp"
+                app:cardCornerRadius="8dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="执行参数"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorPrimary" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:hint="点击延迟 (毫秒)">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_click_delay"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:text="500" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="步骤超时 (毫秒)">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_step_timeout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:text="10000" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="最大重试次数">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_max_retries"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:text="3" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="启动后等待 (毫秒)">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_launch_wait"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:text="3000" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- 策略选择 -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="点击策略"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:layout_marginTop="16dp" />
+
+                    <RadioGroup
+                        android:id="@+id/rg_strategy"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp">
+
+                        <RadioButton
+                            android:id="@+id/rb_auto"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="自动 (无障碍优先，视觉兜底)"
+                            android:checked="true" />
+
+                        <RadioButton
+                            android:id="@+id/rb_accessibility"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="仅无障碍" />
+
+                        <RadioButton
+                            android:id="@+id/rb_vision"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="仅视觉" />
+
+                    </RadioGroup>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 自动切换开关 -->
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/switch_auto_switch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="启用自动切换模型"
+                android:textSize="14sp" />
+
+            <!-- 测试和保存按钮 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="16dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_test_text"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="测试文本"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    app:icon="@android:drawable/ic_menu_search" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_test_vision"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="测试视觉"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
+                    app:icon="@android:drawable/ic_menu_search" />
+
+            </LinearLayout>
+
+            <!-- 保存按钮 -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_save"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="保存设置"
+                android:layout_marginTop="16dp" />
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>
