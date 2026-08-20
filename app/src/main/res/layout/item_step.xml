@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="8dp"
+    android:background="?attr/selectableItemBackground">
+
+    <!-- 左侧：编号 + 拖拽手柄 -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <ImageButton
+            android:id="@+id/btn_drag"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:padding="4dp"
+            android:src="@android:drawable/ic_menu_sort_by_size"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="拖拽排序"
+            android:scaleType="centerInside"
+            android:tint="#999999" />
+
+        <TextView
+            android:id="@+id/tv_step_number"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:text="1"
+            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            android:gravity="center"
+            android:background="@drawable/bg_step_number" />
+
+    </LinearLayout>
+
+    <!-- 中间：动作类型 + 描述 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginStart="8dp">
+
+        <TextView
+            android:id="@+id/tv_step_action"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="点击"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tv_step_desc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="我的按钮"
+            android:textSize="13sp"
+            android:textColor="#666666"
+            android:singleLine="true"
+            android:ellipsize="end" />
+
+    </LinearLayout>
+
+    <!-- 右侧：操作按钮 -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <ImageButton
+            android:id="@+id/btn_add_step"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:padding="4dp"
+            android:src="@android:drawable/ic_input_add"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="添加"
+            android:scaleType="centerInside"
+            android:tint="#4CAF50" />
+
+        <ImageButton
+            android:id="@+id/btn_edit_step"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:padding="4dp"
+            android:src="@android:drawable/ic_menu_edit"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="编辑"
+            android:scaleType="centerInside"
+            android:tint="#2196F3" />
+
+        <ImageButton
+            android:id="@+id/btn_delete_step"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:padding="4dp"
+            android:src="@android:drawable/ic_menu_delete"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="删除"
+            android:scaleType="centerInside"
+            android:tint="#F44336" />
+
+    </LinearLayout>
+
+</LinearLayout>

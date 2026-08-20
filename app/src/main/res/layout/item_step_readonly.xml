@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:padding="8dp"
+    android:background="?attr/selectableItemBackground">
+
+    <TextView
+        android:id="@+id/tv_step_number"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:text="1"
+        android:textSize="12sp"
+        android:textColor="#FFFFFF"
+        android:gravity="center"
+        android:background="@drawable/bg_step_number" />
+
+    <TextView
+        android:id="@+id/tv_step_action"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="点击"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:layout_marginStart="8dp" />
+
+    <TextView
+        android:id="@+id/tv_step_desc"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="我的按钮"
+        android:textSize="13sp"
+        android:textColor="#666666"
+        android:layout_marginStart="4dp"
+        android:singleLine="true"
+        android:ellipsize="end" />
+
+</LinearLayout>
