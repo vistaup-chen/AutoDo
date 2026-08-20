@@ -11,7 +11,7 @@
         android:layout_height="?attr/actionBarSize"
         android:background="?attr/colorPrimary"
         app:title="设置"
-        app:titleTextColor="#FFFFFF"
+        app:titleTextColor="?attr/colorOnPrimary"
         app:navigationIcon="@android:drawable/ic_menu_revert" />
 
     <ScrollView
@@ -23,6 +23,45 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="16dp">
+
+            <!-- 主题外观 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardElevation="2dp"
+                app:cardCornerRadius="8dp"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="主题外观"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorPrimary" />
+
+                    <HorizontalScrollView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:scrollbars="none">
+
+                        <LinearLayout
+                            android:id="@+id/theme_selector"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+
+                    </HorizontalScrollView>
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
             <!-- 文本模型设置 -->
             <com.google.android.material.card.MaterialCardView
@@ -98,14 +137,14 @@
                         android:text="备用文本模型（自动切换）"
                         android:textSize="12sp"
                         android:textStyle="bold"
-                        android:textColor="#666666" />
+                        android:textColor="?attr/colorOnSurfaceVariant" />
 
                     <androidx.recyclerview.widget.RecyclerView
                         android:id="@+id/rv_text_models"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:background="#F5F5F5"
+                        android:background="?attr/colorSurfaceVariant"
                         android:maxHeight="160dp"
                         android:nestedScrollingEnabled="false" />
 
@@ -125,7 +164,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
                         android:layout_marginTop="12dp"
-                        android:background="#E0E0E0" />
+                        android:background="?attr/colorOutlineVariant" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -152,7 +191,7 @@
                                 android:layout_height="wrap_content"
                                 android:text="开启后视觉识别将使用上述文本模型（适合多模态模型）"
                                 android:textSize="12sp"
-                                android:textColor="#666666" />
+                                android:textColor="?attr/colorOnSurfaceVariant" />
                         </LinearLayout>
 
                         <com.google.android.material.materialswitch.MaterialSwitch
@@ -240,14 +279,14 @@
                         android:text="备用视觉模型（自动切换）"
                         android:textSize="12sp"
                         android:textStyle="bold"
-                        android:textColor="#666666" />
+                        android:textColor="?attr/colorOnSurfaceVariant" />
 
                     <androidx.recyclerview.widget.RecyclerView
                         android:id="@+id/rv_vision_models"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:background="#F5F5F5"
+                        android:background="?attr/colorSurfaceVariant"
                         android:maxHeight="160dp"
                         android:nestedScrollingEnabled="false" />
 

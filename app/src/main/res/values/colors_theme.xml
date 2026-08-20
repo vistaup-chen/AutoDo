@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ==================== 🟣 绛紫（默认） ==================== -->
+    <color name="purple_primary">#6750A4</color>
+    <color name="purple_on_primary">#FFFFFF</color>
+    <color name="purple_primary_container">#EADDFF</color>
+    <color name="purple_on_primary_container">#21005D</color>
+    <color name="purple_secondary">#625B71</color>
+    <color name="purple_on_secondary">#FFFFFF</color>
+    <color name="purple_secondary_container">#E8DEF8</color>
+    <color name="purple_surface">#FFFBFE</color>
+    <color name="purple_on_surface">#1C1B1F</color>
+    <color name="purple_surface_variant">#E7E0EC</color>
+    <color name="purple_background">#FFFBFE</color>
+    <color name="purple_toolbar_title">#FFFFFF</color>
+
+    <!-- ==================== 🔵 湛蓝 ==================== -->
+    <color name="blue_primary">#1565C0</color>
+    <color name="blue_on_primary">#FFFFFF</color>
+    <color name="blue_primary_container">#D1E4FF</color>
+    <color name="blue_on_primary_container">#001D36</color>
+    <color name="blue_secondary">#535F70</color>
+    <color name="blue_on_secondary">#FFFFFF</color>
+    <color name="blue_secondary_container">#D7E3F7</color>
+    <color name="blue_surface">#FDFBFF</color>
+    <color name="blue_on_surface">#1A1C1E</color>
+    <color name="blue_surface_variant">#DFE2EB</color>
+    <color name="blue_background">#FDFBFF</color>
+    <color name="blue_toolbar_title">#FFFFFF</color>
+
+    <!-- ==================== 🟢 翠绿 ==================== -->
+    <color name="green_primary">#2E7D32</color>
+    <color name="green_on_primary">#FFFFFF</color>
+    <color name="green_primary_container">#B8F5B0</color>
+    <color name="green_on_primary_container">#002204</color>
+    <color name="green_secondary">#52634F</color>
+    <color name="green_on_secondary">#FFFFFF</color>
+    <color name="green_secondary_container">#D5E8CF</color>
+    <color name="green_surface">#FDFDF5</color>
+    <color name="green_on_surface">#1A1C18</color>
+    <color name="green_surface_variant">#DEE5D8</color>
+    <color name="green_background">#FDFDF5</color>
+    <color name="green_toolbar_title">#FFFFFF</color>
+
+    <!-- ==================== 🟠 暖阳 ==================== -->
+    <color name="orange_primary">#E65100</color>
+    <color name="orange_on_primary">#FFFFFF</color>
+    <color name="orange_primary_container">#FFDBCF</color>
+    <color name="orange_on_primary_container">#341100</color>
+    <color name="orange_secondary">#765848</color>
+    <color name="orange_on_secondary">#FFFFFF</color>
+    <color name="orange_secondary_container">#FFDBCF</color>
+    <color name="orange_surface">#FFFBFF</color>
+    <color name="orange_on_surface">#201A17</color>
+    <color name="orange_surface_variant">#F5DED5</color>
+    <color name="orange_background">#FFFBFF</color>
+    <color name="orange_toolbar_title">#FFFFFF</color>
+
+    <!-- ==================== 🔴 赤焰 ==================== -->
+    <color name="red_primary">#C62828</color>
+    <color name="red_on_primary">#FFFFFF</color>
+    <color name="red_primary_container">#FFDAD4</color>
+    <color name="red_on_primary_container">#410001</color>
+    <color name="red_secondary">#775653</color>
+    <color name="red_on_secondary">#FFFFFF</color>
+    <color name="red_secondary_container">#FFDAD4</color>
+    <color name="red_surface">#FFFBFF</color>
+    <color name="red_on_surface">#201A19</color>
+    <color name="red_surface_variant">#F5DDDA</color>
+    <color name="red_background">#FFFBFF</color>
+    <color name="red_toolbar_title">#FFFFFF</color>
+
+    <!-- ==================== 🩵 天空蓝 ==================== -->
+    <color name="sky_primary">#0288D1</color>
+    <color name="sky_on_primary">#FFFFFF</color>
+    <color name="sky_primary_container">#B3E5FC</color>
+    <color name="sky_on_primary_container">#001F2A</color>
+    <color name="sky_secondary">#4F6367</color>
+    <color name="sky_on_secondary">#FFFFFF</color>
+    <color name="sky_secondary_container">#D1E8EC</color>
+    <color name="sky_surface">#F8FDFF</color>
+    <color name="sky_on_surface">#191C1D</color>
+    <color name="sky_surface_variant">#DAE4E7</color>
+    <color name="sky_background">#F8FDFF</color>
+    <color name="sky_toolbar_title">#FFFFFF</color>
+
+    <!-- ==================== 🩷 樱花粉 ==================== -->
+    <color name="pink_primary">#D81B60</color>
+    <color name="pink_on_primary">#FFFFFF</color>
+    <color name="pink_primary_container">#FFD9E2</color>
+    <color name="pink_on_primary_container">#3E001D</color>
+    <color name="pink_secondary">#74565F</color>
+    <color name="pink_on_secondary">#FFFFFF</color>
+    <color name="pink_secondary_container">#FFD9E2</color>
+    <color name="pink_surface">#FFFBFF</color>
+    <color name="pink_on_surface">#201A1C</color>
+    <color name="pink_surface_variant">#F2DDE1</color>
+    <color name="pink_background">#FFFBFF</color>
+    <color name="pink_toolbar_title">#FFFFFF</color>
+
+    <!-- ==================== 🤎 奶茶棕 ==================== -->
+    <color name="brown_primary">#795548</color>
+    <color name="brown_on_primary">#FFFFFF</color>
+    <color name="brown_primary_container">#FFDBC8</color>
+    <color name="brown_on_primary_container">#2C1606</color>
+    <color name="brown_secondary">#6D5D54</color>
+    <color name="brown_on_secondary">#FFFFFF</color>
+    <color name="brown_secondary_container">#F6DFD2</color>
+    <color name="brown_surface">#FFF8F5</color>
+    <color name="brown_on_surface">#201A17</color>
+    <color name="brown_surface_variant">#F0DFD6</color>
+    <color name="brown_background">#FFF8F5</color>
+    <color name="brown_toolbar_title">#FFFFFF</color>
+
+    <!-- ==================== ⚫ 墨夜（深色） ==================== -->
+    <color name="dark_primary">#CAC4D0</color>
+    <color name="dark_on_primary">#332D41</color>
+    <color name="dark_primary_container">#4A4458</color>
+    <color name="dark_on_primary_container">#EADDFF</color>
+    <color name="dark_secondary">#CCC2DC</color>
+    <color name="dark_on_secondary">#332D41</color>
+    <color name="dark_secondary_container">#4A4458</color>
+    <color name="dark_surface">#141218</color>
+    <color name="dark_on_surface">#E6E0E9</color>
+    <color name="dark_surface_variant">#49454F</color>
+    <color name="dark_background">#141218</color>
+    <color name="dark_toolbar_title">#E6E0E9</color>
+</resources>

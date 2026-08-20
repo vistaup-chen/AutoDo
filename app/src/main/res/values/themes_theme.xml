@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 🟣 绛紫 -->
+    <style name="Theme.AutoTask.Purple" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/purple_primary</item>
+        <item name="colorOnPrimary">@color/purple_on_primary</item>
+        <item name="colorPrimaryContainer">@color/purple_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/purple_on_primary_container</item>
+        <item name="colorSecondary">@color/purple_secondary</item>
+        <item name="colorOnSecondary">@color/purple_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/purple_secondary_container</item>
+        <item name="colorSurface">@color/purple_surface</item>
+        <item name="colorOnSurface">@color/purple_on_surface</item>
+        <item name="colorSurfaceVariant">@color/purple_surface_variant</item>
+        <item name="android:colorBackground">@color/purple_background</item>
+    </style>
+
+    <!-- 🔵 湛蓝 -->
+    <style name="Theme.AutoTask.Blue" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/blue_primary</item>
+        <item name="colorOnPrimary">@color/blue_on_primary</item>
+        <item name="colorPrimaryContainer">@color/blue_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/blue_on_primary_container</item>
+        <item name="colorSecondary">@color/blue_secondary</item>
+        <item name="colorOnSecondary">@color/blue_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/blue_secondary_container</item>
+        <item name="colorSurface">@color/blue_surface</item>
+        <item name="colorOnSurface">@color/blue_on_surface</item>
+        <item name="colorSurfaceVariant">@color/blue_surface_variant</item>
+        <item name="android:colorBackground">@color/blue_background</item>
+    </style>
+
+    <!-- 🟢 翠绿 -->
+    <style name="Theme.AutoTask.Green" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/green_primary</item>
+        <item name="colorOnPrimary">@color/green_on_primary</item>
+        <item name="colorPrimaryContainer">@color/green_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/green_on_primary_container</item>
+        <item name="colorSecondary">@color/green_secondary</item>
+        <item name="colorOnSecondary">@color/green_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/green_secondary_container</item>
+        <item name="colorSurface">@color/green_surface</item>
+        <item name="colorOnSurface">@color/green_on_surface</item>
+        <item name="colorSurfaceVariant">@color/green_surface_variant</item>
+        <item name="android:colorBackground">@color/green_background</item>
+    </style>
+
+    <!-- 🟠 暖阳 -->
+    <style name="Theme.AutoTask.Orange" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/orange_primary</item>
+        <item name="colorOnPrimary">@color/orange_on_primary</item>
+        <item name="colorPrimaryContainer">@color/orange_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/orange_on_primary_container</item>
+        <item name="colorSecondary">@color/orange_secondary</item>
+        <item name="colorOnSecondary">@color/orange_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/orange_secondary_container</item>
+        <item name="colorSurface">@color/orange_surface</item>
+        <item name="colorOnSurface">@color/orange_on_surface</item>
+        <item name="colorSurfaceVariant">@color/orange_surface_variant</item>
+        <item name="android:colorBackground">@color/orange_background</item>
+    </style>
+
+    <!-- 🔴 赤焰 -->
+    <style name="Theme.AutoTask.Red" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/red_primary</item>
+        <item name="colorOnPrimary">@color/red_on_primary</item>
+        <item name="colorPrimaryContainer">@color/red_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/red_on_primary_container</item>
+        <item name="colorSecondary">@color/red_secondary</item>
+        <item name="colorOnSecondary">@color/red_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/red_secondary_container</item>
+        <item name="colorSurface">@color/red_surface</item>
+        <item name="colorOnSurface">@color/red_on_surface</item>
+        <item name="colorSurfaceVariant">@color/red_surface_variant</item>
+        <item name="android:colorBackground">@color/red_background</item>
+    </style>
+
+    <!-- 🩵 天空蓝 -->
+    <style name="Theme.AutoTask.Sky" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/sky_primary</item>
+        <item name="colorOnPrimary">@color/sky_on_primary</item>
+        <item name="colorPrimaryContainer">@color/sky_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/sky_on_primary_container</item>
+        <item name="colorSecondary">@color/sky_secondary</item>
+        <item name="colorOnSecondary">@color/sky_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/sky_secondary_container</item>
+        <item name="colorSurface">@color/sky_surface</item>
+        <item name="colorOnSurface">@color/sky_on_surface</item>
+        <item name="colorSurfaceVariant">@color/sky_surface_variant</item>
+        <item name="android:colorBackground">@color/sky_background</item>
+    </style>
+
+    <!-- 🩷 樱花粉 -->
+    <style name="Theme.AutoTask.Pink" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/pink_primary</item>
+        <item name="colorOnPrimary">@color/pink_on_primary</item>
+        <item name="colorPrimaryContainer">@color/pink_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/pink_on_primary_container</item>
+        <item name="colorSecondary">@color/pink_secondary</item>
+        <item name="colorOnSecondary">@color/pink_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/pink_secondary_container</item>
+        <item name="colorSurface">@color/pink_surface</item>
+        <item name="colorOnSurface">@color/pink_on_surface</item>
+        <item name="colorSurfaceVariant">@color/pink_surface_variant</item>
+        <item name="android:colorBackground">@color/pink_background</item>
+    </style>
+
+    <!-- 🤎 奶茶棕 -->
+    <style name="Theme.AutoTask.Brown" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/brown_primary</item>
+        <item name="colorOnPrimary">@color/brown_on_primary</item>
+        <item name="colorPrimaryContainer">@color/brown_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/brown_on_primary_container</item>
+        <item name="colorSecondary">@color/brown_secondary</item>
+        <item name="colorOnSecondary">@color/brown_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/brown_secondary_container</item>
+        <item name="colorSurface">@color/brown_surface</item>
+        <item name="colorOnSurface">@color/brown_on_surface</item>
+        <item name="colorSurfaceVariant">@color/brown_surface_variant</item>
+        <item name="android:colorBackground">@color/brown_background</item>
+    </style>
+
+    <!-- ⚫ 墨夜 -->
+    <style name="Theme.AutoTask.Dark" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/dark_primary</item>
+        <item name="colorOnPrimary">@color/dark_on_primary</item>
+        <item name="colorPrimaryContainer">@color/dark_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/dark_on_primary_container</item>
+        <item name="colorSecondary">@color/dark_secondary</item>
+        <item name="colorOnSecondary">@color/dark_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/dark_secondary_container</item>
+        <item name="colorSurface">@color/dark_surface</item>
+        <item name="colorOnSurface">@color/dark_on_surface</item>
+        <item name="colorSurfaceVariant">@color/dark_surface_variant</item>
+        <item name="android:colorBackground">@color/dark_background</item>
+    </style>
+
+    <!-- 悬浮窗透明主题（所有主题通用） -->
+    <style name="Theme.AutoTask.Transparent" parent="Theme.Material3.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
+</resources>

@@ -13,6 +13,7 @@ import com.autotask.config.ModelConfigGroup
 import com.autotask.config.TaskRepository
 import com.autotask.databinding.ActivitySettingsBinding
 import com.autotask.model.ModelClient
+import com.autotask.ui.ThemeManager
 import kotlinx.coroutines.launch
 
 /**
@@ -54,6 +55,7 @@ class SettingsActivity : AppCompatActivity() {
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemeManager.applyTheme(this)
         super.onCreate(savedInstanceState)
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -86,6 +88,56 @@ class SettingsActivity : AppCompatActivity() {
         // 统一模型（文本/视觉共用）开关：开启后隐藏视觉模型卡片
         binding.switchUnifiedModel.setOnCheckedChangeListener { _, isChecked ->
             updateVisionCardVisibility(isChecked)
+        }
+
+        // 主题选择器
+        setupThemeSelector()
+    }
+
+    /**
+     * 设置主题选择器
+     */
+    private fun setupThemeSelector() {
+        val currentTheme = ThemeManager.getCurrentTheme(this)
+        val container = binding.themeSelector
+        container.removeAllViews()
+
+        val dp = resources.displayMetrics.density
+
+        for (theme in ThemeManager.Theme.entries) {
+            val itemView = layoutInflater.inflate(
+                com.autotask.R.layout.item_theme_option, container, false
+            )
+
+            val colorCircle = itemView.findViewById<android.view.View>(com.autotask.R.id.theme_color_circle)
+            val label = itemView.findViewById<android.widget.TextView>(com.autotask.R.id.theme_label)
+            val checkMark = itemView.findViewById<android.view.View>(com.autotask.R.id.theme_check_mark)
+
+            // 设置颜色
+            colorCircle.background.setTint(android.graphics.Color.parseColor(theme.primaryColor))
+
+            // 设置标签
+            label.text = "${theme.icon} ${theme.label}"
+
+            // 选中状态
+            val isSelected = theme == currentTheme
+            checkMark.visibility = if (isSelected) android.view.View.VISIBLE else android.view.View.GONE
+            itemView.alpha = if (isSelected) 1.0f else 0.6f
+
+            // 点击切换主题
+            itemView.setOnClickListener {
+                ThemeManager.setTheme(this, theme)
+                // 重建 Activity 以应用新主题
+                recreate()
+            }
+
+            val params = android.widget.LinearLayout.LayoutParams(
+                (72 * dp).toInt(), android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            params.marginEnd = (8 * dp).toInt()
+            itemView.layoutParams = params
+
+            container.addView(itemView)
         }
     }
 

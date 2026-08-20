@@ -23,6 +23,7 @@ import com.autotask.service.TaskExecutor
 import com.autotask.ui.SettingsActivity
 import com.autotask.ui.TaskAdapter
 import com.autotask.ui.TaskListManager
+import com.autotask.ui.ThemeManager
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -41,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var taskListManager: TaskListManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemeManager.applyTheme(this)
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
