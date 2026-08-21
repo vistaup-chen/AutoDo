@@ -36,22 +36,28 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private lateinit var repository: TaskRepository
 
+    // 模型列表（类级别变量，避免每次 setupModelLists 重新加载）
+    private var textModels = mutableListOf<ModelConfig>()
+    private var visionModels = mutableListOf<ModelConfig>()
+
     // 预设配置列表（完整 API 地址，用户无需手动补全）
     private val textPresets = listOf(
         ApiPreset("V1 (本地默认)", "http://127.0.0.1:8080/v1", "Qwen2.5-3B-Instruct", "", false),
         ApiPreset("通义千问", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", "qwen-max", "qwen-vl-max", true),
         ApiPreset("OpenAI", "https://api.openai.com/v1/chat/completions", "gpt-4o-mini", "gpt-4o", true),
         ApiPreset("DeepSeek", "https://api.deepseek.com/v1/chat/completions", "deepseek-chat", "", true),
-        ApiPreset("智谱 GLM", "https://open.bigmodel.cn/api/paas/v4/chat/completions", "glm-4", "glm-4v", true),
+        ApiPreset("智谱 GLM", "https://open.bigmodel.cn/api/paas/v4/chat/completions", "glm-4.7-flash", "GLM-4.1V-Thinking-Flash", true),
         ApiPreset("Moonshot", "https://api.moonshot.cn/v1/chat/completions", "moonshot-v1-8k", "", true),
-        ApiPreset("字节豆包", "https://ark.cn-beijing.volces.com/api/v3/chat/completions", "ep-xxxxxxxx", "", true)
+        ApiPreset("字节豆包", "https://ark.cn-beijing.volces.com/api/v3/chat/completions", "ep-xxxxxxxx", "", true),
+        ApiPreset("SenseNova", "https://token.sensenova.cn/v1/chat/completions", "sensenova-6.8-flash-lite", "sensenova-6.8-flash-lite", true)
     )
 
     private val visionPresets = listOf(
         ApiPreset("V1 (本地默认)", "http://127.0.0.1:8081/v1", "Qwen2-VL-2B-Instruct", "", false),
         ApiPreset("通义千问", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", "", "qwen-vl-max", true),
         ApiPreset("OpenAI", "https://api.openai.com/v1/chat/completions", "", "gpt-4o", true),
-        ApiPreset("智谱 GLM", "https://open.bigmodel.cn/api/paas/v4/chat/completions", "", "glm-4v", true)
+        ApiPreset("智谱 GLM", "https://open.bigmodel.cn/api/paas/v4/chat/completions", "", "GLM-4.1V-Thinking-Flash", true),
+        ApiPreset("SenseNova", "https://token.sensenova.cn/v1/chat/completions", "", "sensenova-6.8-flash-lite", true)
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -92,6 +98,52 @@ class SettingsActivity : AppCompatActivity() {
 
         // 主题选择器
         setupThemeSelector()
+
+        // API 地址下拉预设
+        setupApiDropdowns()
+    }
+
+    /**
+     * 设置 API 地址下拉预设
+     */
+    private fun setupApiDropdowns() {
+        // 文本模型 API 下拉
+        binding.tilTextApiBase.setEndIconOnClickListener {
+            showPresetMenu(textPresets) { preset ->
+                binding.etTextApiBase.setText(preset.baseUrl)
+                binding.etTextModelName.setText(preset.textModel)
+                if (preset.requiresKey && binding.etTextApiKey.text.isNullOrEmpty()) {
+                    binding.etTextApiKey.requestFocus()
+                }
+            }
+        }
+
+        // 视觉模型 API 下拉
+        binding.tilVisionApiBase.setEndIconOnClickListener {
+            showPresetMenu(visionPresets) { preset ->
+                binding.etVisionApiBase.setText(preset.baseUrl)
+                binding.etVisionModelName.setText(preset.visionModel)
+                if (preset.requiresKey && binding.etVisionApiKey.text.isNullOrEmpty()) {
+                    binding.etVisionApiKey.requestFocus()
+                }
+            }
+        }
+    }
+
+    /**
+     * 显示预设选择菜单
+     */
+    private fun showPresetMenu(presets: List<ApiPreset>, onSelect: (ApiPreset) -> Unit) {
+        val popup = android.widget.PopupMenu(this, binding.tilTextApiBase)
+        presets.forEachIndexed { index, preset ->
+            popup.menu.add(0, index, index, preset.name)
+        }
+        popup.setOnMenuItemClickListener { item ->
+            val preset = presets[item.itemId]
+            onSelect(preset)
+            true
+        }
+        popup.show()
     }
 
     /**
@@ -141,68 +193,105 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    private var textAdapter: ModelListAdapter? = null
+    private var visionAdapter: ModelListAdapter? = null
+    private var currentTextIndex = 0
+    private var currentVisionIndex = 0
+
     private fun setupModelLists() {
         val config = repository.getGlobalConfig()
 
-        // 文本模型列表
-        val textModels = config.modelGroup.textModels.toMutableList()
-        if (textModels.isEmpty()) textModels.add(ModelConfig())
-
-        val textAdapter = ModelListAdapter(
-            textModels,
-            config.modelGroup.currentTextIndex,
-            onDelete = { pos ->
-                if (textModels.size > 1) {
-                    textModels.removeAt(pos)
-                    setupModelLists()
-                }
-            },
-            onSelect = { pos ->
-                // 加载选中模型的配置到编辑区
-                val model = textModels[pos]
-                binding.etTextApiBase.setText(model.apiBase)
-                binding.etTextModelName.setText(model.modelName)
-                binding.etTextApiKey.setText(model.apiKey)
-            }
-        )
-        binding.rvTextModels.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
-        binding.rvTextModels.adapter = textAdapter
-
-        binding.btnAddTextModel.setOnClickListener {
-            textModels.add(ModelConfig(apiBase = "https://api.openai.com/v1", modelName = "gpt-4o-mini"))
-            setupModelLists()
+        // 文本模型列表 - 只在首次加载时从 config 初始化
+        if (textModels.isEmpty()) {
+            textModels = config.modelGroup.textModels.toMutableList()
+            if (textModels.isEmpty()) textModels.add(ModelConfig())
+            currentTextIndex = config.modelGroup.currentTextIndex.coerceIn(0, textModels.size - 1)
         }
 
-        // 视觉模型列表
-        val visionModels = config.modelGroup.visionModels.toMutableList()
-        if (visionModels.isEmpty()) visionModels.add(ModelConfig())
-
-        val visionAdapter = ModelListAdapter(
-            visionModels,
-            config.modelGroup.currentVisionIndex,
-            onDelete = { pos ->
-                if (visionModels.size > 1) {
-                    visionModels.removeAt(pos)
-                    setupModelLists()
+        // 只在首次创建 adapter
+        if (textAdapter == null) {
+            textAdapter = ModelListAdapter(
+                textModels,
+                { currentTextIndex },
+                onDelete = { pos ->
+                    if (textModels.size > 1) {
+                        textModels.removeAt(pos)
+                        if (currentTextIndex >= textModels.size) {
+                            currentTextIndex = textModels.size - 1
+                        }
+                        textAdapter?.notifyDataSetChanged()
+                        loadModelToEditArea()
+                    }
+                },
+                onSelect = { pos ->
+                    currentTextIndex = pos
+                    textAdapter?.notifyDataSetChanged()
+                    loadModelToEditArea()
                 }
-            },
-            onSelect = { pos ->
-                val model = visionModels[pos]
-                binding.etVisionApiBase.setText(model.apiBase)
-                binding.etVisionModelName.setText(model.modelName)
-                binding.etVisionApiKey.setText(model.apiKey)
-            }
-        )
-        binding.rvVisionModels.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
-        binding.rvVisionModels.adapter = visionAdapter
+            )
+            binding.rvTextModels.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+            binding.rvTextModels.adapter = textAdapter
 
-        binding.btnAddVisionModel.setOnClickListener {
-            visionModels.add(ModelConfig(apiBase = "https://api.openai.com/v1", modelName = "gpt-4o"))
-            setupModelLists()
+            binding.btnAddTextModel.setOnClickListener {
+                textModels.add(ModelConfig(apiBase = "https://api.openai.com/v1", modelName = "gpt-4o-mini"))
+                textAdapter?.notifyDataSetChanged()
+            }
+        }
+
+        // 视觉模型列表 - 只在首次加载时从 config 初始化
+        if (visionModels.isEmpty()) {
+            visionModels = config.modelGroup.visionModels.toMutableList()
+            if (visionModels.isEmpty()) visionModels.add(ModelConfig())
+            currentVisionIndex = config.modelGroup.currentVisionIndex.coerceIn(0, visionModels.size - 1)
+        }
+
+        // 只在首次创建 adapter
+        if (visionAdapter == null) {
+            visionAdapter = ModelListAdapter(
+                visionModels,
+                { currentVisionIndex },
+                onDelete = { pos ->
+                    if (visionModels.size > 1) {
+                        visionModels.removeAt(pos)
+                        if (currentVisionIndex >= visionModels.size) {
+                            currentVisionIndex = visionModels.size - 1
+                        }
+                        visionAdapter?.notifyDataSetChanged()
+                        loadModelToEditArea()
+                    }
+                },
+                onSelect = { pos ->
+                    currentVisionIndex = pos
+                    visionAdapter?.notifyDataSetChanged()
+                    loadModelToEditArea()
+                }
+            )
+            binding.rvVisionModels.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
+            binding.rvVisionModels.adapter = visionAdapter
+
+            binding.btnAddVisionModel.setOnClickListener {
+                visionModels.add(ModelConfig(apiBase = "https://api.openai.com/v1", modelName = "gpt-4o"))
+                visionAdapter?.notifyDataSetChanged()
+            }
         }
 
         // 加载当前模型配置到编辑区
         loadCurrentModelConfig(config)
+    }
+
+    private fun loadModelToEditArea() {
+        if (currentTextIndex in textModels.indices) {
+            val model = textModels[currentTextIndex]
+            binding.etTextApiBase.setText(model.apiBase)
+            binding.etTextModelName.setText(model.modelName)
+            binding.etTextApiKey.setText(model.apiKey)
+        }
+        if (currentVisionIndex in visionModels.indices) {
+            val model = visionModels[currentVisionIndex]
+            binding.etVisionApiBase.setText(model.apiBase)
+            binding.etVisionModelName.setText(model.modelName)
+            binding.etVisionApiKey.setText(model.apiKey)
+        }
     }
 
     private fun loadCurrentModelConfig(config: GlobalConfig) {
@@ -245,19 +334,28 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun saveSettings() {
-        val textConfig = ModelConfig(
+        // 更新当前编辑的模型配置到列表
+        val currentTextConfig = ModelConfig(
             provider = "openai_compatible",
             apiBase = binding.etTextApiBase.text.toString().trim(),
             apiKey = binding.etTextApiKey.text.toString().trim(),
             modelName = binding.etTextModelName.text.toString().trim()
         )
 
-        val visionConfig = ModelConfig(
+        val currentVisionConfig = ModelConfig(
             provider = "openai_compatible",
             apiBase = binding.etVisionApiBase.text.toString().trim(),
             apiKey = binding.etVisionApiKey.text.toString().trim(),
             modelName = binding.etVisionModelName.text.toString().trim()
         )
+
+        // 更新列表中当前选中的模型
+        if (currentTextIndex in textModels.indices) {
+            textModels[currentTextIndex] = currentTextConfig
+        }
+        if (currentVisionIndex in visionModels.indices) {
+            visionModels[currentVisionIndex] = currentVisionConfig
+        }
 
         val strategy = when {
             binding.rbAuto.isChecked -> "auto"
@@ -266,10 +364,12 @@ class SettingsActivity : AppCompatActivity() {
             else -> "auto"
         }
 
-        val config = GlobalConfig(
+        val newConfig = GlobalConfig(
             modelGroup = ModelConfigGroup(
-                textModels = listOf(textConfig),
-                visionModels = listOf(visionConfig)
+                textModels = textModels.toList(),
+                visionModels = visionModels.toList(),
+                currentTextIndex = currentTextIndex,
+                currentVisionIndex = currentVisionIndex
             ),
             clickDelayMs = binding.etClickDelay.text.toString().toLongOrNull() ?: 500,
             stepTimeoutMs = binding.etStepTimeout.text.toString().toLongOrNull() ?: 10000,
@@ -279,7 +379,7 @@ class SettingsActivity : AppCompatActivity() {
             unifiedModel = binding.switchUnifiedModel.isChecked
         )
 
-        repository.saveGlobalConfig(config)
+        repository.saveGlobalConfig(newConfig)
         Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show()
     }
 

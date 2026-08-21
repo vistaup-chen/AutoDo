@@ -14,7 +14,7 @@ import com.autotask.config.ModelConfig
  */
 class ModelListAdapter(
     private val models: MutableList<ModelConfig>,
-    private val currentIndex: Int,
+    private val getCurrentIndex: () -> Int,
     private val onDelete: (Int) -> Unit,
     private val onSelect: (Int) -> Unit
 ) : RecyclerView.Adapter<ModelListAdapter.ModelViewHolder>() {
@@ -37,7 +37,8 @@ class ModelListAdapter(
         holder.tvModelName.text = model.modelName.ifEmpty { "未命名" }
         holder.tvModelUrl.text = model.apiBase
 
-        // 标记当前使用的模型
+        // 标记当前使用的模型（动态获取）
+        val currentIndex = getCurrentIndex()
         if (position == currentIndex) {
             holder.tvCurrent.visibility = View.VISIBLE
             holder.tvCurrent.text = "当前"

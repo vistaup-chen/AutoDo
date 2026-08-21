@@ -86,10 +86,14 @@
 
                     <!-- API 地址 -->
                     <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/til_text_api_base"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:hint="API 地址">
+                        android:hint="API 地址"
+                        app:endIconMode="custom"
+                        app:endIconDrawable="@android:drawable/arrow_down_float"
+                        app:endIconContentDescription="选择预设">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/et_text_api_base"
@@ -228,10 +232,14 @@
 
                     <!-- API 地址 -->
                     <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/til_vision_api_base"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:hint="API 地址">
+                        android:hint="API 地址"
+                        app:endIconMode="custom"
+                        app:endIconDrawable="@android:drawable/arrow_down_float"
+                        app:endIconContentDescription="选择预设">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/et_vision_api_base"

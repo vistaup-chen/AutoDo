@@ -71,8 +71,8 @@
             android:gravity="center"
             android:clickable="true"
             android:focusable="true"
-            android:background="#99000000"
-            android:elevation="8dp" />
+            android:background="?attr/colorSurfaceVariant"
+            android:elevation="2dp" />
 
     </RelativeLayout>
 

@@ -193,28 +193,26 @@ class FloatingWindowService : Service() {
             val etHint = view.findViewById<EditText>(R.id.et_hint)
             val btnRetry = view.findViewById<Button>(R.id.btn_retry)
             val btnManual = view.findViewById<Button>(R.id.btn_manual)
-            val btnModify = view.findViewById<Button>(R.id.btn_modify)
             val btnContinue = view.findViewById<Button>(R.id.btn_continue)
 
             tvReason.text = "找不到元素: $hint\n原因: $reason"
             etHint.setText(hint)
 
             btnRetry.setOnClickListener {
-                hideFloatingWindow()
-                debugCallback?.onRetry()
+                val newHint = etHint.text.toString().trim()
+                if (newHint.isNotEmpty() && newHint != hint) {
+                    // 如果修改了描述，用修改后的重试
+                    hideFloatingWindow()
+                    debugCallback?.onModifyHint(newHint)
+                } else {
+                    hideFloatingWindow()
+                    debugCallback?.onRetry()
+                }
             }
 
             btnManual.setOnClickListener {
                 hideFloatingWindow()
                 debugCallback?.onManualSpecify()
-            }
-
-            btnModify.setOnClickListener {
-                val newHint = etHint.text.toString().trim()
-                if (newHint.isNotEmpty()) {
-                    hideFloatingWindow()
-                    debugCallback?.onModifyHint(newHint)
-                }
             }
 
             btnContinue.setOnClickListener {

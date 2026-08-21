@@ -53,57 +53,65 @@
             android:textColor="?attr/colorPrimary" />
 
         <!-- 已选应用展示 -->
-        <LinearLayout
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/layout_selected_app"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:background="@drawable/bg_app_selector"
-            android:padding="12dp"
             android:layout_marginTop="8dp"
-            android:clickable="true"
-            android:focusable="true">
-
-            <ImageView
-                android:id="@+id/iv_selected_icon"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:scaleType="fitCenter"
-                android:src="@android:drawable/sym_def_app_icon" />
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="?attr/colorOutlineVariant"
+            app:cardBackgroundColor="?attr/colorSurface">
 
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:layout_marginStart="12dp">
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:padding="12dp">
 
-                <TextView
-                    android:id="@+id/tv_selected_name"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="点击选择应用"
-                    android:textSize="15sp"
-                    android:textColor="#212121" />
+                <ImageView
+                    android:id="@+id/iv_selected_icon"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:scaleType="fitCenter"
+                    android:src="@android:drawable/sym_def_app_icon" />
 
-                <TextView
-                    android:id="@+id/tv_selected_package"
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:textSize="12sp"
-                    android:textColor="#757575"
-                    android:layout_marginTop="2dp" />
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:layout_marginStart="12dp">
+
+                    <TextView
+                        android:id="@+id/tv_selected_name"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="点击选择应用"
+                        android:textSize="15sp"
+                        android:textColor="?attr/colorOnSurface" />
+
+                    <TextView
+                        android:id="@+id/tv_selected_package"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="12sp"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginTop="2dp" />
+
+                </LinearLayout>
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@android:drawable/ic_menu_edit"
+                    android:alpha="0.5" />
 
             </LinearLayout>
 
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@android:drawable/ic_menu_edit"
-                android:alpha="0.5" />
-
-        </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- 文本描述输入 -->
         <com.google.android.material.textfield.TextInputLayout
@@ -168,7 +176,7 @@
                 android:layout_height="wrap_content"
                 android:text="正在解析..."
                 android:textSize="14sp"
-                android:textColor="#666666"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:layout_marginTop="8dp" />
 
         </LinearLayout>
@@ -187,7 +195,7 @@
                 android:layout_height="wrap_content"
                 android:text="解析结果（点击步骤可删除）："
                 android:textSize="12sp"
-                android:textColor="#757575"
+                android:textColor="?attr/colorOnSurfaceVariant"
                 android:textStyle="bold" />
 
             <androidx.recyclerview.widget.RecyclerView
@@ -195,7 +203,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="200dp"
                 android:layout_marginTop="4dp"
-                android:background="#F5F5F5"
+                android:background="?attr/colorSurfaceVariant"
                 android:nestedScrollingEnabled="false" />
 
         </LinearLayout>

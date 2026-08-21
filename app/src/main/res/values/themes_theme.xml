@@ -2,7 +2,7 @@
 <resources>
 
     <!-- 🟣 绛紫 -->
-    <style name="Theme.AutoTask.Purple" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.AutoTask.Purple" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/purple_primary</item>
         <item name="colorOnPrimary">@color/purple_on_primary</item>
         <item name="colorPrimaryContainer">@color/purple_primary_container</item>
@@ -17,7 +17,7 @@
     </style>
 
     <!-- 🔵 湛蓝 -->
-    <style name="Theme.AutoTask.Blue" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.AutoTask.Blue" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/blue_primary</item>
         <item name="colorOnPrimary">@color/blue_on_primary</item>
         <item name="colorPrimaryContainer">@color/blue_primary_container</item>
@@ -32,7 +32,7 @@
     </style>
 
     <!-- 🟢 翠绿 -->
-    <style name="Theme.AutoTask.Green" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.AutoTask.Green" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/green_primary</item>
         <item name="colorOnPrimary">@color/green_on_primary</item>
         <item name="colorPrimaryContainer">@color/green_primary_container</item>
@@ -47,7 +47,7 @@
     </style>
 
     <!-- 🟠 暖阳 -->
-    <style name="Theme.AutoTask.Orange" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.AutoTask.Orange" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/orange_primary</item>
         <item name="colorOnPrimary">@color/orange_on_primary</item>
         <item name="colorPrimaryContainer">@color/orange_primary_container</item>
@@ -62,7 +62,7 @@
     </style>
 
     <!-- 🔴 赤焰 -->
-    <style name="Theme.AutoTask.Red" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.AutoTask.Red" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/red_primary</item>
         <item name="colorOnPrimary">@color/red_on_primary</item>
         <item name="colorPrimaryContainer">@color/red_primary_container</item>
@@ -77,7 +77,7 @@
     </style>
 
     <!-- 🩵 天空蓝 -->
-    <style name="Theme.AutoTask.Sky" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.AutoTask.Sky" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/sky_primary</item>
         <item name="colorOnPrimary">@color/sky_on_primary</item>
         <item name="colorPrimaryContainer">@color/sky_primary_container</item>
@@ -92,7 +92,7 @@
     </style>
 
     <!-- 🩷 樱花粉 -->
-    <style name="Theme.AutoTask.Pink" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.AutoTask.Pink" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/pink_primary</item>
         <item name="colorOnPrimary">@color/pink_on_primary</item>
         <item name="colorPrimaryContainer">@color/pink_primary_container</item>
@@ -107,7 +107,7 @@
     </style>
 
     <!-- 🤎 奶茶棕 -->
-    <style name="Theme.AutoTask.Brown" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.AutoTask.Brown" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/brown_primary</item>
         <item name="colorOnPrimary">@color/brown_on_primary</item>
         <item name="colorPrimaryContainer">@color/brown_primary_container</item>
@@ -122,7 +122,7 @@
     </style>
 
     <!-- ⚫ 墨夜 -->
-    <style name="Theme.AutoTask.Dark" parent="Theme.Material3.Dark.NoActionBar">
+    <style name="Theme.AutoTask.Dark" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/dark_primary</item>
         <item name="colorOnPrimary">@color/dark_on_primary</item>
         <item name="colorPrimaryContainer">@color/dark_primary_container</item>
@@ -137,7 +137,7 @@
     </style>
 
     <!-- 悬浮窗透明主题（所有主题通用） -->
-    <style name="Theme.AutoTask.Transparent" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.AutoTask.Transparent" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowNoTitle">true</item>

@@ -414,7 +414,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshTaskList() {
         lifecycleScope.launch {
-            val tasks = repository.getEnabledTasks()
+            val tasks = repository.getAllTasks()
             taskAdapter.submitList(tasks)
         }
     }
