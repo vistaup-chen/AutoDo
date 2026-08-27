@@ -108,6 +108,24 @@ class AutoTaskAccessibilityService : AccessibilityService() {
             return instance?.findClickableNearInternal(x, y)
         }
 
+        /**
+         * 返回节点自身或最近的可点击祖先（文字常在子节点，可点击属性在父容器）
+         * 返回 null 表示都没有，调用方用节点自身 bounds
+         */
+        fun findClickableSelfOrAncestor(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+            return instance?.findClickableSelfOrAncestorInternal(node)
+        }
+
+        /**
+         * 查找当前窗口第一个可编辑节点（输入框），用于输入步骤兜底
+         */
+        fun findFirstEditableNode(): AccessibilityNodeInfo? {
+            val root = instance?.rootInActiveWindow ?: return null
+            val editable = instance?.findEditableNodeInternal(root)
+            root.recycle()
+            return editable
+        }
+
         fun getAllTextNodes(): List<String> {
             return instance?.getAllTextNodesInternal() ?: emptyList()
         }
@@ -251,20 +269,115 @@ class AutoTaskAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * 通过文本查找节点（两遍策略）：
-     * 1. 先精确匹配：节点文本 == 搜索词 或 节点文本包含搜索词
-     * 2. 再模糊匹配：去掉通用后缀词、双向包含（防止"我的按钮"搜不到节点"我的"）
+     * 返回节点自身或最近的可点击祖先（向上查，最多 5 层）
+     * 原生控件常见结构：文字在子 TextView，可点击属性在父容器
+     */
+    private fun findClickableSelfOrAncestorInternal(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isClickable) return node
+        var current: AccessibilityNodeInfo = node
+        var parent: AccessibilityNodeInfo? = node.parent
+        var depth = 0
+        while (parent != null && depth < 5) {
+            if (parent.isClickable) {
+                return parent
+            }
+            val grandParent = parent.parent
+            parent.recycle()
+            parent = grandParent
+            depth++
+        }
+        return null
+    }
+
+    /**
+     * 递归查找可编辑节点（输入框）：isEditable 或 className 含 EditText
+     */
+    private fun findEditableNodeInternal(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        return findEditableNodeRecursive(root)
+    }
+
+    private fun findEditableNodeRecursive(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isEditable || node.className?.toString()?.contains("EditText") == true) {
+            return node
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findEditableNodeRecursive(child)
+            if (result != null) {
+                return result
+            }
+            child.recycle()
+        }
+        return null
+    }
+
+    /**
+     * 通过文本查找节点：
+     * 1. 优先系统端查找 findAccessibilityNodeInfosByText（系统在后台搜索，只回传命中节点，
+     *    传输量极小，避免整棵树 Binder 大事务刷屏）
+     * 2. 系统查找用原文 + 去后缀词两个词条（"我的按钮"→"我的"）
+     * 3. 全部未命中才退回自研整树递归模糊匹配（低频兜底）
      */
     private fun findNodeByTextInternal(text: String): AccessibilityNodeInfo? {
-        val root1 = rootInActiveWindow ?: return null
-        val exact = findNodeRecursive(root1, text, exact = true)
-        root1.recycle()
-        if (exact != null) return exact
+        val root = rootInActiveWindow ?: return null
 
+        // 搜索词候选：原文 + 去掉通用后缀词的版本
+        val stripped = text.replace(
+            Regex("(按钮|图标|输入框|输入|链接|选项|文字|区域|入口|标签|卡片|菜单|列表|标题|Tab|tab|页签)$"),
+            ""
+        ).trim()
+        val terms = if (stripped.isNotEmpty() && stripped != text) listOf(text, stripped) else listOf(text)
+
+        for (term in terms) {
+            val matches = try {
+                root.findAccessibilityNodeInfosByText(term)
+            } catch (e: Exception) {
+                emptyList()
+            }
+            if (matches.isNotEmpty()) {
+                // 从多个候选中选最佳（防止"我的"命中"我的智能设备"导致点错）
+                val best = pickBestMatch(matches, term)
+                // 回收其他匹配节点，保留 best 交给调用方
+                for (m in matches) {
+                    if (m !== best) m.recycle()
+                }
+                root.recycle()
+                Log.d(TAG, "系统查找命中: \"$term\" → 节点=\"${best.text ?: best.contentDescription}\" (共${matches.size}个候选)")
+                return best
+            }
+        }
+        root.recycle()
+
+        // 兜底：自研模糊递归（整树遍历，仅在系统查找失败时）
         val root2 = rootInActiveWindow ?: return null
         val fuzzy = findNodeRecursive(root2, text, exact = false)
         root2.recycle()
         return fuzzy
+    }
+
+    /**
+     * 从系统查找的多个候选中选最佳节点：
+     * 1. 优先可见节点（过滤掉屏幕外/不可见）
+     * 2. 精确匹配（节点文本 == 搜索词）
+     * 3. 文本最短的包含匹配（"我的"优先于"我的智能设备"）
+     * 4. 兜底第一个
+     */
+    private fun pickBestMatch(matches: List<AccessibilityNodeInfo>, term: String): AccessibilityNodeInfo {
+        val visible = matches.filter { it.isVisibleToUser }
+        val pool = if (visible.isNotEmpty()) visible else matches
+
+        // 精确匹配
+        pool.firstOrNull {
+            it.text?.toString()?.trim()?.equals(term, ignoreCase = true) == true ||
+                it.contentDescription?.toString()?.trim()?.equals(term, ignoreCase = true) == true
+        }?.let { return it }
+
+        // 文本最短的包含匹配（短词通常是目标元素本身，长词是包含它的容器/其他功能）
+        pool.minWithOrNull(
+            compareBy { it.text?.toString()?.trim()?.length ?: Int.MAX_VALUE }
+        )?.let { return it }
+
+        return matches.first()
     }
 
     private fun findNodeRecursive(node: AccessibilityNodeInfo, text: String, exact: Boolean): AccessibilityNodeInfo? {
@@ -481,13 +594,10 @@ class AutoTaskAccessibilityService : AccessibilityService() {
     private suspend fun takeScreenshotSuspend(): Bitmap? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
-                val bitmap = Bitmap.createBitmap(
-                    resources.displayMetrics.widthPixels,
-                    resources.displayMetrics.heightPixels,
-                    Bitmap.Config.ARGB_8888
-                )
-                // 使用 takeScreenshot 的回调版本
-                val result = kotlinx.coroutines.suspendCancellableCoroutine<Bitmap?> { cont ->
+                // 使用 takeScreenshot 的回调版本，带 5 秒超时保护：
+                // 系统回调若一直不触发（截图确认弹窗未响应、窗口切换异常等），
+                // 协程会永久挂起导致任务链卡死、后续任务不执行——必须超时放弃
+                kotlinx.coroutines.suspendCancellableCoroutine<Bitmap?> { cont ->
                     takeScreenshot(
                         Display.DEFAULT_DISPLAY,
                         mainExecutor,
@@ -498,9 +608,9 @@ class AutoTaskAccessibilityService : AccessibilityService() {
                                 val bmp = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshot.colorSpace)
                                 if (bmp != null) {
                                     val copy = bmp.copy(Bitmap.Config.ARGB_8888, false)
-                                    cont.resume(copy) {}
+                                    if (cont.isActive) cont.resume(copy) {}
                                 } else {
-                                    cont.resume(null) {}
+                                    if (cont.isActive) cont.resume(null) {}
                                 }
                                 hardwareBuffer.close()
                             }
@@ -508,12 +618,19 @@ class AutoTaskAccessibilityService : AccessibilityService() {
                             override fun onFailure(errorCode: Int) {
                                 lastScreenshotError = errorCode
                                 Log.e(TAG, "截图失败: $errorCode (3=需要用户确认截图权限)")
-                                cont.resume(null) {}
+                                if (cont.isActive) cont.resume(null) {}
                             }
                         }
                     )
+
+                    // 超时保护：5 秒无回调则放弃，避免任务永久卡住
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        if (cont.isActive) {
+                            Log.e(TAG, "截图超时(5s)，放弃本次截图")
+                            cont.resume(null) {}
+                        }
+                    }, 5000)
                 }
-                result
             } catch (e: Exception) {
                 Log.e(TAG, "截图异常: ${e.message}")
                 null

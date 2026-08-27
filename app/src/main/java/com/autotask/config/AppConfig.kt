@@ -47,7 +47,7 @@ data class ModelConfigGroup(
  */
 data class GlobalConfig(
     @SerializedName("model_group") val modelGroup: ModelConfigGroup = ModelConfigGroup(),
-    @SerializedName("click_delay_ms") val clickDelayMs: Long = 500,
+    @SerializedName("click_delay_ms") val clickDelayMs: Long = 1000,
     @SerializedName("step_timeout_ms") val stepTimeoutMs: Long = 10000,
     @SerializedName("max_retries") val maxRetries: Int = 3,
     @SerializedName("wait_after_launch_ms") val waitAfterLaunchMs: Long = 3000,

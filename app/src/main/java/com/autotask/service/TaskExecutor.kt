@@ -135,10 +135,14 @@ class TaskExecutor(
      * 执行单个任务
      */
     suspend fun executeTask(task: AutomationTask): TaskResult {
-        if (isExecuting) return TaskResult(task, false, message = "已有任务在执行中")
+        if (isExecuting) {
+            Log.w(TAG, "任务「${task.name}」被跳过：已有任务在执行中")
+            return TaskResult(task, false, message = "已有任务在执行中")
+        }
 
         isExecuting = true
         shouldStop = false
+        Log.i(TAG, "===== 开始执行任务「${task.name}」（${task.steps.size} 步，包名=${task.packageName}）=====")
 
         val stepResults = mutableListOf<StepResult>()
         var currentStep = 0
@@ -146,6 +150,7 @@ class TaskExecutor(
 
         // 任务结束时通知悬浮窗显示最终结果（成功/失败/原因），方便不接电脑排查问题
         fun finish(result: TaskResult): TaskResult {
+            Log.i(TAG, "===== 任务「${result.task.name}」结束: ${if (result.success) "成功" else "失败"} - ${result.message} =====")
             if (floatingWindowEnabled) {
                 val status = if (result.success) "✓ 任务完成" else "✗ 任务失败"
                 floatingWindowCallback?.invoke(
@@ -176,6 +181,9 @@ class TaskExecutor(
                     waitForPageReady()
                 } else {
                     Log.w(TAG, "自动启动应用失败: ${task.packageName}")
+                    // 应用拉不起来则直接终止任务，避免在错误界面执行后续步骤
+                    isExecuting = false
+                    return finish(TaskResult(task, false, stepResults, totalSteps, 0, "启动应用失败: ${task.packageName}"))
                 }
             }
 
@@ -241,7 +249,7 @@ class TaskExecutor(
                     }
                 }
 
-                // 步骤间延迟
+                // 步骤间延迟（由配置控制，新默认 1000ms，用户可自行调整）
                 delay(config.clickDelayMs)
             }
 
@@ -337,27 +345,16 @@ class TaskExecutor(
     }
 
     /**
-     * 页面节点树是否就绪（有新窗口且渲染出了 UI 内容）
+     * 页面节点树是否就绪：轻量判断（root 存在且有子节点结构）。
+     * 不做全树遍历（每次遍历都会触发整棵树 Binder 传输，刷屏大事务警告），
+     * 页面是否真正稳定由截图静止判断兜底。
      */
     private fun isPageReady(): Boolean {
         val service = AutoTaskAccessibilityService.instance ?: return false
         val root = service.rootInActiveWindow ?: return false
-        val ready = hasUsableNode(root)
+        val ready = root.childCount > 0
         root.recycle()
         return ready
-    }
-
-    private fun hasUsableNode(node: AccessibilityNodeInfo): Boolean {
-        if (!node.text.isNullOrEmpty() || !node.contentDescription.isNullOrEmpty()) return true
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
-            if (hasUsableNode(child)) {
-                child.recycle()
-                return true
-            }
-            child.recycle()
-        }
-        return false
     }
 
     /**
@@ -420,32 +417,80 @@ class TaskExecutor(
 
     /**
      * 策略A: 无障碍节点查找点击
+     * 增强：等待重试（异步加载）+ 自动滚动查找（目标在屏幕外）+ 可点击祖先点击（文字在子节点）
      */
     private suspend fun clickByAccessibility(step: TaskStep): StepResult {
         val targetText = step.targetText.ifEmpty { step.hint }
 
-        val node = AutoTaskAccessibilityService.findNodeByText(targetText)
+        // 1. 立即查找 + 等待重试（元素可能异步加载/延迟出现）
+        var node = AutoTaskAccessibilityService.findNodeByText(targetText)
+        var retry = 0
+        while (node == null && retry < 3) {
+            delay(600)
+            node = AutoTaskAccessibilityService.findNodeByText(targetText)
+            retry++
+        }
         if (node != null) {
-            val rect = android.graphics.Rect()
-            node.getBoundsInScreen(rect)
+            return clickFoundNode(node, step, "无障碍点击成功")
+        }
 
-            // 优先尝试无障碍 ACTION_CLICK
-            val success = try {
-                node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
-            } catch (e: Exception) {
-                false
+        // 2. 目标可能在屏幕外：上下交替滚动查找
+        Log.d(TAG, "未找到「$targetText」，尝试滚动查找")
+        var scrollCount = 0
+        while (scrollCount < 4) {
+            scrollPage(down = scrollCount % 2 == 0)
+            delay(800)
+            node = AutoTaskAccessibilityService.findNodeByText(targetText)
+            if (node != null) {
+                return clickFoundNode(node, step, "滚动后无障碍点击成功")
             }
-
-            if (!success) {
-                // 失败则用手势点击
-                dispatchGestureClick(rect.centerX().toFloat(), rect.centerY().toFloat())
-            }
-
-            node.recycle()
-            return StepResult(true, step, if (success) "无障碍点击成功" else "无障碍手势点击成功")
+            scrollCount++
         }
 
         return StepResult(false, step, "无障碍未找到: $targetText")
+    }
+
+    /**
+     * 点击已找到的节点：
+     * 1. 优先找可点击的自身/祖先（原生控件文字常在子节点，可点击在父容器）
+     * 2. performAction 点击，失败则手势点击节点中心
+     */
+    private suspend fun clickFoundNode(node: AccessibilityNodeInfo, step: TaskStep, successMsg: String): StepResult {
+        // 找可点击的自身或祖先
+        val clickTarget = AutoTaskAccessibilityService.findClickableSelfOrAncestor(node) ?: node
+        val rect = android.graphics.Rect()
+        clickTarget.getBoundsInScreen(rect)
+
+        val success = try {
+            clickTarget.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+        } catch (e: Exception) {
+            false
+        }
+
+        if (!success) {
+            // 手势点击目标节点中心
+            dispatchGestureClick(rect.centerX().toFloat(), rect.centerY().toFloat())
+        }
+
+        Log.d(TAG, "$successMsg: 节点=\"${clickTarget.text}\" class=${clickTarget.className} 坐标=(${rect.centerX()}, ${rect.centerY()})")
+        clickTarget.recycle()
+        if (clickTarget !== node) {
+            node.recycle()
+        }
+        return StepResult(true, step, if (success) successMsg else "无障碍手势点击成功")
+    }
+
+    /**
+     * 页面滚动（用于"目标在屏幕外"的查找）
+     */
+    private suspend fun scrollPage(down: Boolean) {
+        val displayMetrics = context.resources.displayMetrics
+        val centerX = displayMetrics.widthPixels / 2f
+        val centerY = displayMetrics.heightPixels / 2f
+        val scrollDistance = displayMetrics.heightPixels * 0.4f
+        val startY = if (down) centerY + scrollDistance / 2 else centerY - scrollDistance / 2
+        val endY = if (down) centerY - scrollDistance / 2 else centerY + scrollDistance / 2
+        AutoTaskAccessibilityService.swipe(centerX, startY, centerX, endY, 300)
     }
 
     /**
@@ -536,9 +581,20 @@ class TaskExecutor(
      */
     private suspend fun executeInput(task: AutomationTask, step: TaskStep, stepIndex: Int): StepResult {
         val clickResult = clickByAuto(task, step.copy(action = StepAction.CLICK, hint = step.hint), stepIndex)
-        if (!clickResult.success) return StepResult(false, step, "点击输入框失败")
-
-        delay(300)
+        if (!clickResult.success) {
+            // 点击输入框失败：降级——直接定位屏幕上的可编辑节点并点击
+            Log.d(TAG, "点击输入框失败，尝试直接定位可编辑节点")
+            val editable = AutoTaskAccessibilityService.findFirstEditableNode()
+            if (editable != null) {
+                val rect = android.graphics.Rect()
+                editable.getBoundsInScreen(rect)
+                editable.recycle()
+                dispatchGestureClick(rect.centerX().toFloat(), rect.centerY().toFloat())
+                delay(300)
+            } else {
+                return StepResult(false, step, "点击输入框失败")
+            }
+        }
 
         val success = inputText(step.inputText)
         return if (success) {
@@ -661,15 +717,21 @@ class TaskExecutor(
             val focusedNode = root.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
                 ?: root.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_ACCESSIBILITY)
 
-            if (focusedNode != null) {
+            // 焦点节点没有则兜底找屏幕上的可编辑节点（输入框）
+            val target = focusedNode ?: AutoTaskAccessibilityService.findFirstEditableNode()
+
+            if (target != null) {
                 val arguments = android.os.Bundle()
                 arguments.putCharSequence(
                     AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
                     text
                 )
-                val success = focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
-                focusedNode.recycle()
+                val success = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+                target.recycle()
                 root.recycle()
+                if (!success) {
+                    Log.w(TAG, "ACTION_SET_TEXT 失败: $text")
+                }
                 success
             } else {
                 root.recycle()

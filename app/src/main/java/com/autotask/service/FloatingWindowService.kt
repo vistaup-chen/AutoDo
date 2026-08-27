@@ -207,6 +207,10 @@ class FloatingWindowService : Service() {
         lastExecuteTotal = total
         lastExecuteMessage = message
         if (push) {
+            // 新任务开始时（消息以"准备开始"开头）清空上一任务的历史，避免跨任务混淆
+            if (message.startsWith("准备开始")) {
+                messageHistory.clear()
+            }
             pushMessage(message)
         }
         createFloatingWindow(R.layout.floating_execute)
@@ -295,8 +299,14 @@ class FloatingWindowService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
 
+        // 悬浮窗宽度必须用 params 显式设置：addView 会忽略 root 视图的 layout_width，
+        // 若设 WRAP_CONTENT 会退化成内容宽度（消息短就变细条）
+        // 取屏幕宽度的 60%，任何手机自适应
+        val screenWidthPx = resources.displayMetrics.widthPixels
+        val floatWidthPx = (screenWidthPx * 0.6f).toInt().coerceAtLeast(280)
+
         params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            floatWidthPx,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutType,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or

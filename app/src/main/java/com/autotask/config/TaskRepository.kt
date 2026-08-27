@@ -127,7 +127,19 @@ class TaskRepository(context: Context) {
      */
     fun getGlobalConfig(): GlobalConfig {
         val json = prefs.getString(KEY_GLOBAL_CONFIG, null)
-        return if (json != null) ConfigManager.jsonToConfig(json) else GlobalConfig()
+        return if (json != null) {
+            val config = ConfigManager.jsonToConfig(json)
+            // 旧版本默认 clickDelayMs=500 迁移到新默认 1000（仅迁移旧默认值，用户手动改过的不受影响）
+            if (config.clickDelayMs == 500L) {
+                val updated = config.copy(clickDelayMs = 1000L)
+                saveGlobalConfig(updated)
+                updated
+            } else {
+                config
+            }
+        } else {
+            GlobalConfig()
+        }
     }
 
     private fun getTaskIds(): Set<String> {

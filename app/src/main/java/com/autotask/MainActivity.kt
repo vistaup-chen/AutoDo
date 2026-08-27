@@ -522,14 +522,18 @@ class MainActivity : AppCompatActivity() {
                 return@launch
             }
 
+            Log.i(TAG, "一键执行开始：共 ${tasks.size} 个任务")
             var successCount = 0
             var failCount = 0
-            for (task in tasks) {
+            for ((index, task) in tasks.withIndex()) {
+                Log.i(TAG, ">>> 第 ${index + 1}/${tasks.size} 个任务: ${task.name} (enabled=${task.enabled})")
                 val result = taskExecutor.executeTask(task)
+                Log.i(TAG, "<<< 第 ${index + 1}/${tasks.size} 个任务结束: ${task.name} - success=${result.success} msg=${result.message}")
                 repository.updateTaskResult(task.id, result.success)
                 if (result.success) successCount++ else failCount++
             }
 
+            Log.i(TAG, "一键执行完成：$successCount 成功, $failCount 失败")
             Toast.makeText(this@MainActivity, "执行完成: $successCount 成功, $failCount 失败", Toast.LENGTH_LONG).show()
             refreshTaskList()
         }
