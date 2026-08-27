@@ -24,6 +24,7 @@ import com.autotask.ui.SettingsActivity
 import com.autotask.ui.TaskAdapter
 import com.autotask.ui.TaskListManager
 import com.autotask.ui.ThemeManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -54,6 +55,31 @@ class MainActivity : AppCompatActivity() {
         setupUI()
         setupExecutorCallbacks()
         checkPermissions()
+        triggerScreenshotConfirmation()
+    }
+
+    /**
+     * 主动触发系统截图确认（Android 14+ 无障碍截图需要用户确认，否则任务执行时截图返回错误码3）
+     * App 打开且无障碍已开启时截一次图，让用户提前点掉确认弹窗
+     */
+    private fun triggerScreenshotConfirmation() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        lifecycleScope.launch {
+            if (AutoTaskAccessibilityService.isAvailable()) {
+                delay(1500) // 等服务连接稳定
+                val bmp = AutoTaskAccessibilityService.takeScreenshot()
+                if (bmp != null) {
+                    bmp.recycle()
+                    Log.d(TAG, "截图权限确认成功")
+                } else if (AutoTaskAccessibilityService.lastScreenshotError == 3) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "系统要求确认截图权限：请留意屏幕弹窗并点击「允许」",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
     }
 
     override fun onResume() {

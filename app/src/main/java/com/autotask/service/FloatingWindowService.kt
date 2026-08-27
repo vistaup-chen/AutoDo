@@ -74,6 +74,19 @@ class FloatingWindowService : Service() {
     private var lastExecuteTotal = 0
     private var lastExecuteMessage = ""
 
+    // 消息历史（最近 8 条），悬浮窗多行显示，方便不接电脑排查
+    private val messageHistory = ArrayDeque<String>()
+    private val MAX_HISTORY = 8
+
+    private fun pushMessage(message: String) {
+        messageHistory.addLast(message)
+        while (messageHistory.size > MAX_HISTORY) messageHistory.removeFirst()
+    }
+
+    private fun renderMessage(view: View?) {
+        view?.findViewById<TextView>(R.id.tv_message)?.text = messageHistory.joinToString("\n")
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -117,9 +130,9 @@ class FloatingWindowService : Service() {
                     hideFloatingWindow()
                 }
                 "restore_execute" -> {
-                    // 截图完成后恢复执行进度悬浮窗
+                    // 截图完成后恢复执行进度悬浮窗（不重复 push 历史）
                     if (lastExecuteTotal > 0 && currentMode == MODE_HIDDEN) {
-                        showExecuteWindow(lastExecuteProgress, lastExecuteTotal, lastExecuteMessage)
+                        showExecuteWindow(lastExecuteProgress, lastExecuteTotal, lastExecuteMessage, push = false)
                     }
                 }
                 "update_message" -> updateMessage(it.getStringExtra("message") ?: "")
@@ -186,13 +199,16 @@ class FloatingWindowService : Service() {
 
     // ==================== 执行进度悬浮窗 ====================
 
-    private fun showExecuteWindow(progress: Int, total: Int, message: String) {
+    private fun showExecuteWindow(progress: Int, total: Int, message: String, push: Boolean = true) {
         Log.d(TAG, "show_execute: progress=$progress, total=$total, message=$message")
         currentMode = MODE_EXECUTE
         // 记录状态，供截图后恢复
         lastExecuteProgress = progress
         lastExecuteTotal = total
         lastExecuteMessage = message
+        if (push) {
+            pushMessage(message)
+        }
         createFloatingWindow(R.layout.floating_execute)
 
         floatingView?.let { view ->
@@ -201,7 +217,7 @@ class FloatingWindowService : Service() {
             val btnStop = view.findViewById<Button>(R.id.btn_stop)
 
             tvProgress.text = "$progress / $total"
-            tvMessage.text = message
+            renderMessage(view)
 
             btnStop.setOnClickListener {
                 // 通知停止执行
@@ -341,7 +357,8 @@ class FloatingWindowService : Service() {
 
     private fun updateMessage(message: String) {
         if (currentMode == MODE_EXECUTE) {
-            floatingView?.findViewById<TextView>(R.id.tv_message)?.text = message
+            pushMessage(message)
+            renderMessage(floatingView)
         }
     }
 

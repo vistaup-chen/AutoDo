@@ -179,16 +179,19 @@ class TaskListManager(
             if (step.action == StepAction.CLICK && isLaunchIntent(step.hint)) {
                 if (!hasLaunch) {
                     // 第一个启动类步骤转为 LAUNCH
+                    Log.d(TAG, "normalizeSteps: 步骤 ${i + 1}「${step.hint}」→ 转为「启动应用」")
                     result[i] = com.autotask.config.TaskStep(StepAction.LAUNCH)
                     hasLaunch = true
                 } else {
                     // 已有启动步骤，删除多余的"点击APP图标"
+                    Log.d(TAG, "normalizeSteps: 删除多余的启动类步骤「${step.hint}」")
                     result.removeAt(i)
                     i--
                 }
             }
             i++
         }
+        Log.d(TAG, "normalizeSteps: ${steps.size} 步 -> ${result.size} 步")
         return result
     }
 

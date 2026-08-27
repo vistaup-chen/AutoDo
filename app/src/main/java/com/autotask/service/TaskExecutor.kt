@@ -144,6 +144,21 @@ class TaskExecutor(
         var currentStep = 0
         val totalSteps = task.steps.size
 
+        // 任务结束时通知悬浮窗显示最终结果（成功/失败/原因），方便不接电脑排查问题
+        fun finish(result: TaskResult): TaskResult {
+            if (floatingWindowEnabled) {
+                val status = if (result.success) "✓ 任务完成" else "✗ 任务失败"
+                floatingWindowCallback?.invoke(
+                    maxOf(0, result.totalSteps - 1),
+                    result.totalSteps,
+                    "$status：${result.message}",
+                    result.success,
+                    false
+                )
+            }
+            return result
+        }
+
         try {
             progressCallback?.invoke(0, totalSteps, "开始执行: ${task.name}")
             if (floatingWindowEnabled) {
@@ -157,6 +172,8 @@ class TaskExecutor(
                 if (autoLaunched) {
                     Log.i(TAG, "已自动启动目标应用: ${task.packageName}")
                     delay(config.waitAfterLaunchMs)
+                    // 等页面加载完成再开始执行步骤
+                    waitForPageReady()
                 } else {
                     Log.w(TAG, "自动启动应用失败: ${task.packageName}")
                 }
@@ -200,7 +217,7 @@ class TaskExecutor(
                             stepResults[stepResults.size - 1] = retryResult
                             if (!retryResult.success && !step.optional) {
                                 isExecuting = false
-                                return TaskResult(task, false, stepResults, totalSteps, index, "步骤 ${index + 1} 重试失败")
+                                return finish(TaskResult(task, false, stepResults, totalSteps, index, "步骤 ${index + 1} 重试失败"))
                             }
                         }
                         DebugAction.MODIFY_AND_RETRY -> {
@@ -208,7 +225,7 @@ class TaskExecutor(
                             stepResults[stepResults.size - 1] = retryResult
                             if (!retryResult.success && !step.optional) {
                                 isExecuting = false
-                                return TaskResult(task, false, stepResults, totalSteps, index, "步骤 ${index + 1} 修改后重试失败")
+                                return finish(TaskResult(task, false, stepResults, totalSteps, index, "步骤 ${index + 1} 修改后重试失败"))
                             }
                         }
                         DebugAction.SKIP -> {
@@ -219,7 +236,7 @@ class TaskExecutor(
                         }
                         DebugAction.ABORT -> {
                             isExecuting = false
-                            return TaskResult(task, false, stepResults, totalSteps, index, "用户终止")
+                            return finish(TaskResult(task, false, stepResults, totalSteps, index, "用户终止"))
                         }
                     }
                 }
@@ -232,13 +249,13 @@ class TaskExecutor(
             progressCallback?.invoke(totalSteps, totalSteps, if (success) "任务完成" else "任务部分失败")
 
             isExecuting = false
-            return TaskResult(task, success, stepResults, totalSteps, currentStep + 1,
-                if (success) "全部步骤执行成功" else "部分步骤失败")
+            return finish(TaskResult(task, success, stepResults, totalSteps, currentStep + 1,
+                if (success) "全部步骤执行成功" else "部分步骤失败"))
 
         } catch (e: Exception) {
             Log.e(TAG, "任务执行异常: ${e.message}", e)
             isExecuting = false
-            return TaskResult(task, false, stepResults, totalSteps, currentStep, "执行异常: ${e.message}")
+            return finish(TaskResult(task, false, stepResults, totalSteps, currentStep, "执行异常: ${e.message}"))
         }
     }
 
@@ -274,10 +291,110 @@ class TaskExecutor(
 
         return if (launched) {
             delay(config.waitAfterLaunchMs)
+            // 等页面真正加载完成再开始后续操作，避免冷启动白屏时点击失败
+            waitForPageReady()
             StepResult(true, step, "应用已启动")
         } else {
             StepResult(false, step, "启动应用失败: ${task.packageName}")
         }
+    }
+
+    /**
+     * 等待页面加载完成：
+     * 1. 无障碍节点树就绪（有新窗口的 UI 内容）
+     * 2. 页面静止（连续两次截图几乎无差异）
+     * 两个条件都满足才认为页面加载完成；超时（默认 15 秒）后继续执行，不阻塞任务。
+     */
+    private suspend fun waitForPageReady(timeoutMs: Long = 15000) {
+        val start = System.currentTimeMillis()
+        var lastSnapshot: Bitmap? = null
+        var stableCount = 0
+
+        while (System.currentTimeMillis() - start < timeoutMs) {
+            if (isPageReady()) {
+                val snapshot = takeRawScreenshot()
+                if (snapshot != null) {
+                    if (lastSnapshot != null) {
+                        val diff = bitmapDiffRatio(lastSnapshot, snapshot)
+                        lastSnapshot.recycle()
+                        if (diff < 0.005) {
+                            stableCount++
+                            if (stableCount >= 2) {
+                                Log.i(TAG, "页面加载完成（节点就绪 + 页面静止，差异 $diff）")
+                                snapshot.recycle()
+                                return
+                            }
+                        } else {
+                            stableCount = 0
+                        }
+                    }
+                    lastSnapshot = snapshot
+                }
+            }
+            delay(800)
+        }
+        Log.w(TAG, "等待页面加载完成超时(${timeoutMs}ms)，继续执行")
+    }
+
+    /**
+     * 页面节点树是否就绪（有新窗口且渲染出了 UI 内容）
+     */
+    private fun isPageReady(): Boolean {
+        val service = AutoTaskAccessibilityService.instance ?: return false
+        val root = service.rootInActiveWindow ?: return false
+        val ready = hasUsableNode(root)
+        root.recycle()
+        return ready
+    }
+
+    private fun hasUsableNode(node: AccessibilityNodeInfo): Boolean {
+        if (!node.text.isNullOrEmpty() || !node.contentDescription.isNullOrEmpty()) return true
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            if (hasUsableNode(child)) {
+                child.recycle()
+                return true
+            }
+            child.recycle()
+        }
+        return false
+    }
+
+    /**
+     * 原始截图（不触发悬浮窗隐藏/恢复），用于页面静止判断
+     */
+    private suspend fun takeRawScreenshot(): Bitmap? {
+        return withContext(Dispatchers.IO) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                AutoTaskAccessibilityService.takeScreenshot()
+            } else {
+                ScreenshotService.captureScreenshot()
+            }
+        }
+    }
+
+    /**
+     * 计算两张截图的像素差异比例（抽样 1/16，降低开销）
+     */
+    private fun bitmapDiffRatio(a: Bitmap, b: Bitmap): Double {
+        if (a.width != b.width || a.height != b.height) return 1.0
+        var diffCount = 0
+        var total = 0
+        val step = 16
+        for (x in 0 until a.width step step) {
+            for (y in 0 until a.height step step) {
+                val pa = a.getPixel(x, y)
+                val pb = b.getPixel(x, y)
+                total++
+                if (kotlin.math.abs(android.graphics.Color.red(pa) - android.graphics.Color.red(pb)) > 12 ||
+                    kotlin.math.abs(android.graphics.Color.green(pa) - android.graphics.Color.green(pb)) > 12 ||
+                    kotlin.math.abs(android.graphics.Color.blue(pa) - android.graphics.Color.blue(pb)) > 12
+                ) {
+                    diffCount++
+                }
+            }
+        }
+        return if (total == 0) 1.0 else diffCount.toDouble() / total
     }
 
     /**
@@ -347,9 +464,21 @@ class TaskExecutor(
         val location = visionClient.locateElement(step.hint, screenshot)
 
         return if (location.isValid()) {
-            dispatchGestureClick(location.x.toFloat(), location.y.toFloat())
-            StepResult(true, step, "视觉点击成功: (${location.x}, ${location.y})",
-                Coordinates(location.x.toFloat(), location.y.toFloat()), screenshotPath)
+            // 视觉粗定位 + 无障碍精校准：
+            // 视觉模型单点坐标误差较大，若视觉坐标落在真实可点击节点上，改用节点中心点击（更准）
+            val calibrated = AutoTaskAccessibilityService.findClickableNear(location.x, location.y)
+            val clickX = calibrated?.first ?: location.x.toFloat()
+            val clickY = calibrated?.second ?: location.y.toFloat()
+            Log.i(
+                TAG,
+                "视觉点击: 模型(${location.x}, ${location.y})" +
+                    if (calibrated != null) " → 无障碍校准($clickX, $clickY)" else " → 无校准节点，用模型坐标"
+            )
+            dispatchGestureClick(clickX, clickY)
+            StepResult(
+                true, step, "视觉点击成功: ($clickX, $clickY)",
+                Coordinates(clickX, clickY), screenshotPath
+            )
         } else {
             StepResult(false, step, "视觉未找到: ${step.hint}", screenshotPath = screenshotPath)
         }
@@ -476,16 +605,29 @@ class TaskExecutor(
                 Intent(context, FloatingWindowService::class.java)
                     .putExtra("action", "hide_for_screenshot")
             )
-            delay(200) // 等窗口移除
+            delay(300) // 等窗口移除稳定
         } catch (e: Exception) {
             Log.w(TAG, "隐藏悬浮窗失败: ${e.message}")
         }
 
-        val bmp = withContext(Dispatchers.IO) {
+        var bmp = withContext(Dispatchers.IO) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                 AutoTaskAccessibilityService.takeScreenshot()
             } else {
                 ScreenshotService.captureScreenshot()
+            }
+        }
+
+        // 失败重试一次（隐藏/恢复悬浮窗的窗口操作可能干扰截图；重试时不隐藏直接截）
+        if (bmp == null) {
+            Log.w(TAG, "第一次截图失败(code=${AutoTaskAccessibilityService.lastScreenshotError})，重试")
+            delay(400)
+            bmp = withContext(Dispatchers.IO) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    AutoTaskAccessibilityService.takeScreenshot()
+                } else {
+                    ScreenshotService.captureScreenshot()
+                }
             }
         }
 
@@ -497,6 +639,10 @@ class TaskExecutor(
             )
         } catch (e: Exception) {
             Log.w(TAG, "恢复悬浮窗失败: ${e.message}")
+        }
+
+        if (bmp == null && AutoTaskAccessibilityService.lastScreenshotError == 3) {
+            Log.e(TAG, "截图被系统拦截：Android 14+ 需要用户确认截图权限，请留意系统弹窗并点击「允许」")
         }
 
         return bmp

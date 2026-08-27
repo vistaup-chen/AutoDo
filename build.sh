@@ -36,6 +36,14 @@ if [ $? -eq 0 ]; then
         echo "安装成功！"
         echo "=========================================="
 
+        # 自动开启无障碍服务（adb 有系统权限，可静默开启，省去每次手动点击）
+        # 注意：改过 accessibility_service_config.xml 的版本仍需手动重开一次
+        echo ""
+        echo "自动开启无障碍服务..."
+        adb shell settings put secure enabled_accessibility_services com.autotask/com.autotask.service.AutoTaskAccessibilityService
+        adb shell settings put secure accessibility_enabled 1
+        echo "无障碍服务已开启"
+
         # 启动应用
         echo ""
         echo "启动应用..."

@@ -48,6 +48,10 @@ class AutoTaskAccessibilityService : AccessibilityService() {
         var instance: AutoTaskAccessibilityService? = null
             private set
 
+        // 最近一次截图错误码（0=成功；3=Android 14+ 需要用户确认截图权限）
+        @Volatile
+        var lastScreenshotError: Int = 0
+
         /**
          * 检查无障碍服务是否在系统设置中已启用
          * 这比检查instance更可靠，因为服务可能被系统回收但权限仍然开启
@@ -94,6 +98,14 @@ class AutoTaskAccessibilityService : AccessibilityService() {
 
         fun findNodeByText(text: String): AccessibilityNodeInfo? {
             return instance?.findNodeByTextInternal(text)
+        }
+
+        /**
+         * 在指定坐标附近查找真实的可点击节点（视觉粗定位后的精校准）
+         * 返回节点中心坐标；找不到返回 null（调用方回退用视觉坐标）
+         */
+        fun findClickableNear(x: Int, y: Int): Pair<Float, Float>? {
+            return instance?.findClickableNearInternal(x, y)
         }
 
         fun getAllTextNodes(): List<String> {
@@ -206,32 +218,110 @@ class AutoTaskAccessibilityService : AccessibilityService() {
     // ==================== 策略A: 无障碍节点查找 ====================
 
     /**
-     * 通过文本查找节点
+     * 在坐标附近找真实可点击节点：视觉模型定位误差较大时，
+     * 用无障碍节点树把点击点校准到真实按钮的中心
      */
-    private fun findNodeByTextInternal(text: String): AccessibilityNodeInfo? {
+    private fun findClickableNearInternal(x: Int, y: Int): Pair<Float, Float>? {
         val root = rootInActiveWindow ?: return null
-        return findNodeRecursive(root, text)
+        val result = findClickableNearRecursive(root, x, y)
+        root.recycle()
+        return result
     }
 
-    private fun findNodeRecursive(node: AccessibilityNodeInfo, text: String): AccessibilityNodeInfo? {
-        // 检查当前节点
-        if (node.text?.toString()?.contains(text, ignoreCase = true) == true) {
-            return node
+    private fun findClickableNearRecursive(node: AccessibilityNodeInfo, x: Int, y: Int): Pair<Float, Float>? {
+        // 坐标落在节点范围内，且节点可点击（或可点击的容器）
+        if (node.isClickable) {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            if (rect.contains(x, y)) {
+                Log.d(TAG, "视觉坐标校准: ($x, $y) → 可点击节点 \"${node.text}\" 中心(${rect.centerX()}, ${rect.centerY()})")
+                return Pair(rect.centerX().toFloat(), rect.centerY().toFloat())
+            }
         }
-        if (node.contentDescription?.toString()?.contains(text, ignoreCase = true) == true) {
-            return node
-        }
-
         // 递归检查子节点
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            val result = findNodeRecursive(child, text)
+            val result = findClickableNearRecursive(child, x, y)
             if (result != null) {
                 return result
             }
             child.recycle()
         }
         return null
+    }
+
+    /**
+     * 通过文本查找节点（两遍策略）：
+     * 1. 先精确匹配：节点文本 == 搜索词 或 节点文本包含搜索词
+     * 2. 再模糊匹配：去掉通用后缀词、双向包含（防止"我的按钮"搜不到节点"我的"）
+     */
+    private fun findNodeByTextInternal(text: String): AccessibilityNodeInfo? {
+        val root1 = rootInActiveWindow ?: return null
+        val exact = findNodeRecursive(root1, text, exact = true)
+        root1.recycle()
+        if (exact != null) return exact
+
+        val root2 = rootInActiveWindow ?: return null
+        val fuzzy = findNodeRecursive(root2, text, exact = false)
+        root2.recycle()
+        return fuzzy
+    }
+
+    private fun findNodeRecursive(node: AccessibilityNodeInfo, text: String, exact: Boolean): AccessibilityNodeInfo? {
+        // 节点文本/描述 与 搜索词匹配（精确或模糊模式）
+        if (if (exact) {
+                exactMatch(node.text?.toString(), text) || exactMatch(node.contentDescription?.toString(), text)
+            } else {
+                textMatches(node.text?.toString(), text) || textMatches(node.contentDescription?.toString(), text)
+            }
+        ) {
+            Log.d(TAG, "节点匹配成功(${if (exact) "精确" else "模糊"}): 节点文本=\"${node.text}\" 搜索词=\"$text\"")
+            return node
+        }
+
+        // 递归检查子节点
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val result = findNodeRecursive(child, text, exact)
+            if (result != null) {
+                return result
+            }
+            child.recycle()
+        }
+        return null
+    }
+
+    /**
+     * 精确匹配：节点文本等于搜索词，或节点文本包含搜索词
+     */
+    private fun exactMatch(nodeText: String?, searchText: String): Boolean {
+        if (nodeText.isNullOrBlank() || searchText.isBlank()) return false
+        val n = nodeText.trim()
+        val s = searchText.trim()
+        return n.equals(s, ignoreCase = true) || n.contains(s, ignoreCase = true)
+    }
+
+    /**
+     * 模糊匹配，兼容用户描述与真实节点文本的差异：
+     * 1. 搜索词包含节点文本（"我的按钮" 搜 "我的" —— 原生按钮节点文本通常是短词）
+     * 2. 去掉搜索词尾部的通用后缀词后匹配（按钮/图标/输入框/链接等）
+     */
+    private fun textMatches(nodeText: String?, searchText: String): Boolean {
+        if (nodeText.isNullOrBlank() || searchText.isBlank()) return false
+        val n = nodeText.trim()
+        val s = searchText.trim()
+        // 搜索词包含节点文本（防误伤：节点文本至少 2 个字符）
+        if (s.contains(n, ignoreCase = true) && n.length >= 2) return true
+        // 去掉搜索词的通用后缀再匹配
+        val stripped = s.replace(
+            Regex("(按钮|图标|输入框|输入|链接|选项|文字|区域|入口|标签|卡片|菜单|列表|标题|Tab|tab|页签)$"),
+            ""
+        ).trim()
+        if (stripped.length >= 2) {
+            if (n.contains(stripped, ignoreCase = true)) return true
+            if (stripped.contains(n, ignoreCase = true)) return true
+        }
+        return false
     }
 
     /**
@@ -403,6 +493,7 @@ class AutoTaskAccessibilityService : AccessibilityService() {
                         mainExecutor,
                         object : TakeScreenshotCallback {
                             override fun onSuccess(screenshot: ScreenshotResult) {
+                                lastScreenshotError = 0
                                 val hardwareBuffer = screenshot.hardwareBuffer
                                 val bmp = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshot.colorSpace)
                                 if (bmp != null) {
@@ -415,7 +506,8 @@ class AutoTaskAccessibilityService : AccessibilityService() {
                             }
 
                             override fun onFailure(errorCode: Int) {
-                                Log.e(TAG, "截图失败: $errorCode")
+                                lastScreenshotError = errorCode
+                                Log.e(TAG, "截图失败: $errorCode (3=需要用户确认截图权限)")
                                 cont.resume(null) {}
                             }
                         }

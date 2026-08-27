@@ -156,31 +156,32 @@ class ModelClient(private val config: ModelConfig) {
         description: String,
         bitmap: Bitmap
     ): ElementLocation = withContext(Dispatchers.IO) {
-        val displayMetrics = android.content.res.Resources.getSystem().displayMetrics
-        val screenWidth = displayMetrics.widthPixels
-        val screenHeight = displayMetrics.heightPixels
+        // 必须用截图的实际像素尺寸，不能用 Resources.getSystem()：
+        // 截图是全屏（含状态栏/导航栏），尺寸与窗口可见区域不一致会导致坐标偏移
+        val screenWidth = bitmap.width
+        val screenHeight = bitmap.height
 
         val prompt = """
             分析这张安卓屏幕截图，精确定位"$description"的位置。
 
             屏幕分辨率: ${screenWidth}x${screenHeight}
 
-            请分析：
-            1. 元素的文字、颜色、形状特征
-            2. 元素在屏幕中的区域（顶部/中部/底部，左侧/中间/右侧）
-            3. 与其他元素的相对位置
-
-            返回JSON: {"x": 横坐标, "y": 纵坐标, "confidence": 0.0-1.0}
+            返回JSON: {"x1": 元素左上角x, "y1": 元素左上角y, "x2": 元素右下角x, "y2": 元素右下角y, "confidence": 0.0-1.0}
 
             规则：
-            - 坐标原点在左上角，x范围0-$screenWidth，y范围0-$screenHeight
+            - 坐标原点在左上角（图片最左上角），x范围0-$screenWidth，y范围0-$screenHeight
+            - x1/y1/x2/y2 必须框住整个目标元素的完整矩形（不要只框文字，要框住整个可点击区域）
+            - 坐标必须与图片像素一一对应，不要做任何缩放或换算
             - confidence表示确定程度，不确定时降低confidence
-            - 找不到返回 {"x": -1, "y": -1, "confidence": 0}
+            - 找不到返回 {"x1": -1, "y1": -1, "x2": -1, "y2": -1, "confidence": 0}
             - 只返回JSON，不要其他文字
         """.trimIndent()
 
         val result = askVision(prompt, bitmap)
-        parseLocationResponse(result)
+        Log.d(TAG, "视觉定位原始返回: ${result.take(800)}")
+        val loc = parseLocationResponse(result, screenWidth, screenHeight)
+        Log.d(TAG, "视觉定位结果: \"$description\" → 中心(${loc.x}, ${loc.y}) 截图=${screenWidth}x${screenHeight}")
+        loc
     }
 
     /**
@@ -190,26 +191,30 @@ class ModelClient(private val config: ModelConfig) {
         description: String,
         bitmap: Bitmap
     ): List<ElementLocation> = withContext(Dispatchers.IO) {
-        val displayMetrics = android.content.res.Resources.getSystem().displayMetrics
-        val screenWidth = displayMetrics.widthPixels
-        val screenHeight = displayMetrics.heightPixels
+        // 同样以截图实际像素尺寸为准
+        val screenWidth = bitmap.width
+        val screenHeight = bitmap.height
 
         val prompt = """
             分析这张安卓屏幕截图，找到所有"$description"的位置。
 
             屏幕分辨率: ${screenWidth}x${screenHeight}
 
-            返回JSON数组: [{"x": 横坐标, "y": 纵坐标, "confidence": 0.0-1.0}, ...]
+            返回JSON数组: [{"x1": 左上角x, "y1": 左上角y, "x2": 右下角x, "y2": 右下角y, "confidence": 0.0-1.0}, ...]
 
             规则：
-            - 坐标原点在左上角
+            - 坐标原点在左上角（图片最左上角），坐标必须与图片像素一一对应，不要缩放或换算
+            - x1/y1/x2/y2 必须框住每个目标元素的完整矩形
             - 每个元素都要有confidence
             - 找不到返回 []
             - 只返回JSON
         """.trimIndent()
 
         val result = askVision(prompt, bitmap)
-        parseLocationArrayResponse(result)
+        Log.d(TAG, "批量视觉定位原始返回: ${result.take(800)}")
+        val locs = parseLocationArrayResponse(result, screenWidth, screenHeight)
+        Log.d(TAG, "批量视觉定位结果: \"$description\" → ${locs.size} 个")
+        locs
     }
 
     /**
@@ -327,10 +332,31 @@ class ModelClient(private val config: ModelConfig) {
 
         val prompt = "请分解以下操作流程为执行步骤：\n$description"
 
+        Log.d(TAG, "===== AI 解析开始 =====")
+        Log.d(TAG, "描述: $description | 包名: $packageName")
+        Log.d(TAG, "使用模型: ${config.modelName} (apiBase=${config.apiBase})")
+
         val result = askText(prompt, systemPrompt)
+        Log.d(TAG, "模型原始返回: ${result.take(1500)}")
+
         // 清理响应：去掉代码块包裹，只保留 JSON 数组
         val cleaned = cleanJsonResponse(result)
-        parseStepsResponse(cleaned)
+        Log.d(TAG, "清理后的 JSON: ${cleaned.take(1500)}")
+
+        val steps = parseStepsResponse(cleaned)
+        Log.d(TAG, "===== AI 解析结果（${steps.size} 步）=====")
+        steps.forEachIndexed { index, s ->
+            val detail = buildString {
+                append("步骤 ${index + 1}: [${s.action}]")
+                if (s.hint.isNotEmpty()) append(" hint=\"${s.hint}\"")
+                if (s.inputText.isNotEmpty()) append(" input=\"${s.inputText}\"")
+                if (s.duration > 0) append(" 等${s.duration}s")
+                if (s.scrollDirection != "down") append(" 方向=${s.scrollDirection}")
+            }
+            Log.d(TAG, detail)
+        }
+        Log.d(TAG, "===== AI 解析结束 =====")
+        steps
     }
 
     private fun callApi(endpoint: String, body: String): String {
@@ -400,20 +426,25 @@ class ModelClient(private val config: ModelConfig) {
         }
     }
 
-    private fun parseLocationResponse(response: String): ElementLocation {
+    private fun parseLocationResponse(response: String, maxX: Int, maxY: Int): ElementLocation {
         return try {
             val json = extractJsonFromResponse(response)
             val obj = gson.fromJson(json, JsonObject::class.java)
-            val x = obj.get("x")?.asInt ?: -1
-            val y = obj.get("y")?.asInt ?: -1
+            // 优先解析 bbox（x1,y1,x2,y2）取中心点，兼容旧的 x/y 单点格式
+            val x1 = obj.get("x1")?.asInt
+            val y1 = obj.get("y1")?.asInt
+            val x2 = obj.get("x2")?.asInt
+            val y2 = obj.get("y2")?.asInt
 
-            // 验证坐标在合理范围内
-            val displayMetrics = android.content.res.Resources.getSystem().displayMetrics
-            val maxX = displayMetrics.widthPixels
-            val maxY = displayMetrics.heightPixels
+            val (x, y) = if (x1 != null && y1 != null && x2 != null && y2 != null) {
+                ((x1 + x2) / 2) to ((y1 + y2) / 2)
+            } else {
+                (obj.get("x")?.asInt ?: -1) to (obj.get("y")?.asInt ?: -1)
+            }
 
+            // 验证坐标在截图范围内
             if (x < 0 || y < 0 || x > maxX || y > maxY) {
-                Log.w(TAG, "坐标超出范围: ($x, $y), 屏幕: ${maxX}x${maxY}")
+                Log.w(TAG, "坐标超出范围: ($x, $y), 截图: ${maxX}x${maxY}, 原始: $json")
                 ElementLocation(-1, -1)
             } else {
                 ElementLocation(x, y)
@@ -424,17 +455,26 @@ class ModelClient(private val config: ModelConfig) {
         }
     }
 
-    private fun parseLocationArrayResponse(response: String): List<ElementLocation> {
+    private fun parseLocationArrayResponse(response: String, maxX: Int, maxY: Int): List<ElementLocation> {
         return try {
             val json = extractJsonFromResponse(response)
             val array = gson.fromJson(json, JsonArray::class.java)
             array.map { elem ->
                 val obj = elem.asJsonObject
-                ElementLocation(
-                    obj.get("x")?.asInt ?: -1,
-                    obj.get("y")?.asInt ?: -1
-                )
-            }.filter { it.x >= 0 && it.y >= 0 }
+                // bbox 优先，兼容单点
+                val x1 = obj.get("x1")?.asInt
+                val y1 = obj.get("y1")?.asInt
+                val x2 = obj.get("x2")?.asInt
+                val y2 = obj.get("y2")?.asInt
+                if (x1 != null && y1 != null && x2 != null && y2 != null) {
+                    ElementLocation((x1 + x2) / 2, (y1 + y2) / 2)
+                } else {
+                    ElementLocation(
+                        obj.get("x")?.asInt ?: -1,
+                        obj.get("y")?.asInt ?: -1
+                    )
+                }
+            }.filter { it.x >= 0 && it.y >= 0 && it.x <= maxX && it.y <= maxY }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse location array: ${e.message}")
             emptyList()
