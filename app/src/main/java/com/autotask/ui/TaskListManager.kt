@@ -148,7 +148,7 @@ class TaskListManager(
                     return@setOnClickListener
                 }
 
-                val steps = parseDescriptionManually(newDescription, packageName)
+                val steps = normalizeSteps(parseDescriptionManually(newDescription, packageName))
                 val updatedTask = task.copy(name = name, packageName = packageName, steps = steps)
                 onTaskUpdated(updatedTask)
                 dialog.dismiss()
@@ -157,6 +157,55 @@ class TaskListManager(
 
 
         dialog.show()
+    }
+
+    /**
+     * 规范化步骤列表（所有创建/编辑任务入口统一调用）：
+     * 1. 把"点击APP图标/打开XX应用"这类启动应用步骤转为 LAUNCH（执行时引擎会拉起应用）
+     * 2. 开头多余的启动类步骤删除（只保留一个）
+     */
+    private fun normalizeSteps(steps: List<com.autotask.config.TaskStep>): List<com.autotask.config.TaskStep> {
+        val result = steps.toMutableList()
+        var hasLaunch = result.any { it.action == StepAction.LAUNCH }
+        // 只检查开头连续的前 3 步，避免误伤应用内部的点击操作
+        var i = 0
+        while (i < result.size && i < 3) {
+            val step = result[i]
+            if (step.action == StepAction.LAUNCH) {
+                hasLaunch = true
+                i++
+                continue
+            }
+            if (step.action == StepAction.CLICK && isLaunchIntent(step.hint)) {
+                if (!hasLaunch) {
+                    // 第一个启动类步骤转为 LAUNCH
+                    result[i] = com.autotask.config.TaskStep(StepAction.LAUNCH)
+                    hasLaunch = true
+                } else {
+                    // 已有启动步骤，删除多余的"点击APP图标"
+                    result.removeAt(i)
+                    i--
+                }
+            }
+            i++
+        }
+        return result
+    }
+
+    /**
+     * 判断点击步骤是否是"启动应用"意图（如"点击APP图标"、"打开微信"）
+     */
+    private fun isLaunchIntent(hint: String): Boolean {
+        val h = hint.trim()
+        if (h.isEmpty()) return false
+        // 规则1：明确启动动作 + 短文本（打开/启动/进入 + 应用名），且不是应用内的功能入口
+        if (Regex("^(打开|点开|启动|进入|开启)").containsMatchIn(h) && h.length <= 10 &&
+            !Regex("设置|详情|消息|首页|我的|个人|登录|注册|搜索|列表|菜单|页面|界面|中心|帮助|关于").containsMatchIn(h)
+        ) {
+            return true
+        }
+        // 规则2：XX APP 图标 / 应用图标 / 软件图标 / 点击APP 这类描述
+        return Regex("""^(点击|点一下)?\s*((app|APP|应用|程序|软件)(图标)?|图标)$""").matches(h)
     }
 
     /**
@@ -446,7 +495,7 @@ class TaskListManager(
                         else -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
                     }
                 }
-                val updatedTask = task.copy(steps = taskSteps)
+                val updatedTask = task.copy(steps = normalizeSteps(taskSteps))
                 onSave(updatedTask)
             }
             .setNegativeButton("取消", null)
@@ -740,7 +789,7 @@ class TaskListManager(
                             else -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
                         }
                     }
-                    val task = AutomationTask(name = name, packageName = app.packageName, steps = taskSteps)
+                    val task = AutomationTask(name = name, packageName = app.packageName, steps = normalizeSteps(taskSteps))
                     onTaskCreated(task)
                     dialog.dismiss()
                 } else {
@@ -812,7 +861,7 @@ class TaskListManager(
                         val task = AutomationTask(
                             name = name,
                             packageName = packageName,
-                            steps = taskSteps
+                            steps = normalizeSteps(taskSteps)
                         )
                         onTaskCreated(task)
                         dialog.dismiss()

@@ -9,6 +9,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.Rect
@@ -162,7 +163,12 @@ class AutoTaskAccessibilityService : AccessibilityService() {
             .build()
 
         try {
-            startForeground(NOTIFICATION_ID, notification)
+            // Android 14 (targetSdk 34) 起 startForeground 必须带类型
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
             Log.i(TAG, "前台通知已启动")
         } catch (e: Exception) {
             Log.e(TAG, "启动前台通知失败: ${e.message}")

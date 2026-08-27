@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.view.ContextThemeWrapper
 import android.graphics.PixelFormat
 import android.provider.Settings
 import android.os.Build
@@ -67,13 +69,27 @@ class FloatingWindowService : Service() {
     private var totalSteps = 0
     private var currentHint = ""
 
+    // 记录最后一次执行窗口状态，用于截图后恢复显示
+    private var lastExecuteProgress = 0
+    private var lastExecuteTotal = 0
+    private var lastExecuteMessage = ""
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification())
+        // Android 14 (targetSdk 34) 起 startForeground 必须带类型，否则抛 MissingForegroundServiceTypeException 直接崩溃
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, createNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(NOTIFICATION_ID, createNotification())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "启动前台服务失败: ${e.message}")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -96,6 +112,16 @@ class FloatingWindowService : Service() {
                     reason = it.getStringExtra("reason") ?: ""
                 )
                 "hide" -> hideFloatingWindow()
+                "hide_for_screenshot" -> {
+                    // 视觉定位截图前临时隐藏悬浮窗，避免遮挡屏幕干扰模型识别
+                    hideFloatingWindow()
+                }
+                "restore_execute" -> {
+                    // 截图完成后恢复执行进度悬浮窗
+                    if (lastExecuteTotal > 0 && currentMode == MODE_HIDDEN) {
+                        showExecuteWindow(lastExecuteProgress, lastExecuteTotal, lastExecuteMessage)
+                    }
+                }
                 "update_message" -> updateMessage(it.getStringExtra("message") ?: "")
             }
         }
@@ -163,6 +189,10 @@ class FloatingWindowService : Service() {
     private fun showExecuteWindow(progress: Int, total: Int, message: String) {
         Log.d(TAG, "show_execute: progress=$progress, total=$total, message=$message")
         currentMode = MODE_EXECUTE
+        // 记录状态，供截图后恢复
+        lastExecuteProgress = progress
+        lastExecuteTotal = total
+        lastExecuteMessage = message
         createFloatingWindow(R.layout.floating_execute)
 
         floatingView?.let { view ->
@@ -234,7 +264,11 @@ class FloatingWindowService : Service() {
             return
         }
 
-        val inflater = LayoutInflater.from(this)
+        // 用 Material3 主题包装 Service Context 再 inflate：
+        // Service 的 Context 主题不是 Material 系（Activity 才有 ThemeManager.setTheme），
+        // 直接 inflate 含 MaterialCardView 等组件的布局会抛 "app theme to be Theme.MaterialComponents"
+        val themedContext = ContextThemeWrapper(this, R.style.Theme_AutoTask)
+        val inflater = LayoutInflater.from(themedContext)
         floatingView = inflater.inflate(layoutResId, null)
         Log.d(TAG, "floatingView=${floatingView != null}")
 

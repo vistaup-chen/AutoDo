@@ -38,13 +38,12 @@
             android:label="设置"
             android:parentActivityName=".MainActivity" />
 
-        <!-- 无障碍服务 - 独立进程，避免主界面被划掉时连带杀死 -->
+        <!-- 无障碍服务 - 必须与主进程同进程：TaskExecutor 通过静态变量 instance 访问服务，独立进程会导致所有自动化操作失效 -->
         <service
             android:name=".service.AutoTaskAccessibilityService"
             android:exported="false"
             android:directBootAware="true"
             android:foregroundServiceType="specialUse"
-            android:process=":accessibility"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"

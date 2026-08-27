@@ -113,7 +113,23 @@ class MainActivity : AppCompatActivity() {
                     putExtra("total", totalSteps)
                     putExtra("message", message)
                 }
-                startService(intent)
+                // 服务已在 App 前台时预启动并常驻，这里只是更新内容；
+                // 包 try-catch 防止后台启动前台服务被系统拒绝时崩溃
+                try {
+                    startService(intent)
+                } catch (e: Exception) {
+                    Log.e(TAG, "启动悬浮窗服务失败: ${e.message}")
+                }
+            }
+        }
+
+        // 预启动悬浮窗服务：必须在 App 前台时启动，否则任务执行切到后台后
+        // 系统会拒绝启动前台服务，悬浮窗就永远显示不出来
+        if (Settings.canDrawOverlays(this)) {
+            try {
+                startService(Intent(this, FloatingWindowService::class.java))
+            } catch (e: Exception) {
+                Log.e(TAG, "预启动悬浮窗服务失败: ${e.message}")
             }
         }
 

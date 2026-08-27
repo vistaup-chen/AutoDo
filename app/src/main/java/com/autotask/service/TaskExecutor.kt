@@ -1,6 +1,7 @@
 package com.autotask.service
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
@@ -149,6 +150,18 @@ class TaskExecutor(
                 floatingWindowCallback?.invoke(0, totalSteps, "准备开始执行「${task.name}」", null, true)
             }
 
+            // 自动启动目标应用：任务绑定了 packageName 且步骤里没有「启动应用」步骤时，
+            // 引擎先拉起目标 App（解决 AI 解析生成的任务第一步是"点击 APP 图标"导致应用未被拉起的问题）
+            if (task.packageName.isNotEmpty() && task.steps.firstOrNull()?.action != StepAction.LAUNCH) {
+                val autoLaunched = AutoTaskAccessibilityService.instance?.launchApp(task.packageName) ?: false
+                if (autoLaunched) {
+                    Log.i(TAG, "已自动启动目标应用: ${task.packageName}")
+                    delay(config.waitAfterLaunchMs)
+                } else {
+                    Log.w(TAG, "自动启动应用失败: ${task.packageName}")
+                }
+            }
+
             for ((index, step) in task.steps.withIndex()) {
                 if (shouldStop) break
 
@@ -241,7 +254,7 @@ class TaskExecutor(
      */
     private suspend fun executeStep(task: AutomationTask, step: TaskStep, stepIndex: Int): StepResult {
         return when (step.action) {
-            StepAction.LAUNCH -> executeLaunch(task)
+            StepAction.LAUNCH -> executeLaunch(task, stepIndex)
             StepAction.WAIT -> executeWait(step)
             StepAction.CLICK -> executeClick(task, step, stepIndex)
             StepAction.INPUT -> executeInput(task, step, stepIndex)
@@ -255,8 +268,8 @@ class TaskExecutor(
     /**
      * 启动应用
      */
-    private suspend fun executeLaunch(task: AutomationTask): StepResult {
-        val step = task.steps.first()
+    private suspend fun executeLaunch(task: AutomationTask, stepIndex: Int): StepResult {
+        val step = task.steps.getOrNull(stepIndex) ?: TaskStep(StepAction.LAUNCH)
         val launched = AutoTaskAccessibilityService.instance?.launchApp(task.packageName) ?: false
 
         return if (launched) {
@@ -457,13 +470,36 @@ class TaskExecutor(
     // ==================== 辅助方法 ====================
 
     private suspend fun captureScreenshot(): Bitmap? {
-        return withContext(Dispatchers.IO) {
+        // 截图前临时隐藏悬浮窗：悬浮窗是系统级 overlay，会遮挡屏幕且文字会干扰视觉模型识别
+        try {
+            context.startService(
+                Intent(context, FloatingWindowService::class.java)
+                    .putExtra("action", "hide_for_screenshot")
+            )
+            delay(200) // 等窗口移除
+        } catch (e: Exception) {
+            Log.w(TAG, "隐藏悬浮窗失败: ${e.message}")
+        }
+
+        val bmp = withContext(Dispatchers.IO) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
                 AutoTaskAccessibilityService.takeScreenshot()
             } else {
                 ScreenshotService.captureScreenshot()
             }
         }
+
+        // 截图完成后恢复悬浮窗
+        try {
+            context.startService(
+                Intent(context, FloatingWindowService::class.java)
+                    .putExtra("action", "restore_execute")
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "恢复悬浮窗失败: ${e.message}")
+        }
+
+        return bmp
     }
 
     private suspend fun dispatchGestureClick(x: Float, y: Float) {
