@@ -47,7 +47,7 @@ interface DebugCallback {
 class FloatingWindowService : Service() {
 
     companion object {
-        private const val TAG = "FloatingWindow"
+        private const val TAG = "AT-FloatingWindow"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "floating_window_channel"
 
@@ -113,7 +113,6 @@ class FloatingWindowService : Service() {
                     totalSteps = it.getIntExtra("total_steps", 0)
                 )
                 "show_execute" -> {
-                    Log.d(TAG, "show_execute: progress=${it.getIntExtra("progress", 0)}, total=${it.getIntExtra("total", 0)}")
                     showExecuteWindow(
                         progress = it.getIntExtra("progress", 0),
                         total = it.getIntExtra("total", 0),
@@ -275,7 +274,7 @@ class FloatingWindowService : Service() {
     // ==================== 悬浮窗工具方法 ====================
 
     private fun createFloatingWindow(layoutResId: Int) {
-        Log.d(TAG, "createFloatingWindow: layoutResId=$layoutResId")
+        Log.d(TAG, "创建悬浮窗: layout=$layoutResId")
         hideFloatingWindow()
 
         // 检查悬浮窗权限
@@ -290,7 +289,6 @@ class FloatingWindowService : Service() {
         val themedContext = ContextThemeWrapper(this, R.style.Theme_AutoTask)
         val inflater = LayoutInflater.from(themedContext)
         floatingView = inflater.inflate(layoutResId, null)
-        Log.d(TAG, "floatingView=${floatingView != null}")
 
         val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -345,7 +343,6 @@ class FloatingWindowService : Service() {
         }
 
         try {
-            Log.d(TAG, "准备添加悬浮窗: floatingView=$floatingView, params=$params")
             windowManager.addView(floatingView, params)
             Log.d(TAG, "悬浮窗添加成功")
         } catch (e: Exception) {

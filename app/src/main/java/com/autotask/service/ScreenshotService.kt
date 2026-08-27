@@ -31,7 +31,7 @@ import kotlin.coroutines.resume
 class ScreenshotService : android.app.Service() {
 
     companion object {
-        private const val TAG = "ScreenshotService"
+        private const val TAG = "AT-Screenshot"
         private const val REQUEST_CODE_SCREENSHOT = 1001
 
         @Volatile

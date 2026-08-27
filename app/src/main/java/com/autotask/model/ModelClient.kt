@@ -22,13 +22,16 @@ import java.util.concurrent.TimeUnit
 class ModelClient(private val config: ModelConfig) {
 
     companion object {
-        private const val TAG = "ModelClient"
+        private const val TAG = "AT-ModelClient"
     }
 
+    // 状态回调（429 限流重试/超时等），用于 UI 展示详细进度
+    var statusListener: ((String) -> Unit)? = null
+
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS)
         .build()
 
     private val gson = Gson()
@@ -283,11 +286,14 @@ class ModelClient(private val config: ModelConfig) {
 
             6. **launch** - 启动应用
                - 用途：打开/启动某个应用（如"打开微信"、"启动支付宝"、"进入抖音"）
-               - 注意：launch 步骤不带 hint，直接输出 {"action": "launch"}
+               - 注意：普通应用 launch 不带 hint，直接输出 {"action": "launch"}
                - 示例：{"action": "launch"}
+               - **特殊：如果描述是"打开/进入/使用 XX小程序"，launch 必须带 hint 标记小程序名：{"action": "launch", "hint": "小程序:龙湖天街"}（hint 格式固定为"小程序:名称"）**
 
             ## 重要规则
             - 描述中只要包含"打开/启动/进入/点开某个应用"，必须使用 **launch** 步骤，绝对禁止生成"点击APP图标"、"点击应用图标"这类 click 步骤
+            - 描述中只要包含"XX小程序"（如"打开龙湖天街小程序"），第一步必须使用 {"action": "launch", "hint": "小程序:XX"}，禁止生成 click 步骤
+            - **"打开XX小程序"之后的其他操作（如"点击签到"、"输入手机号"）必须继续解析为后续步骤，绝对不能省略或合并**
             - 应用启动只有一次，且必须在步骤列表的最前面
 
             ## 输出格式要求
@@ -375,28 +381,56 @@ class ModelClient(private val config: ModelConfig) {
             }
             .build()
 
-        // 重试机制：处理 429 频率限制
+        // 重试机制：处理 429 频率限制、超时、网络错误
         var retryCount = 0
         val maxRetries = 3
 
         while (retryCount <= maxRetries) {
-            val response = client.newCall(request).execute()
+            val response = try {
+                client.newCall(request).execute()
+            } catch (e: java.net.SocketTimeoutException) {
+                // 请求/响应超时（模型服务慢或排队）
+                statusListener?.invoke("请求超时，重试中(${retryCount + 1}/$maxRetries)...")
+                Log.w(TAG, "请求超时: ${e.message}")
+                if (retryCount >= maxRetries) {
+                    throw Exception("请求超时（模型服务响应慢），已重试 $maxRetries 次")
+                }
+                retryCount++
+                Thread.sleep(1000L)
+                continue
+            } catch (e: java.io.IOException) {
+                // 网络错误
+                statusListener?.invoke("网络错误，重试中(${retryCount + 1}/$maxRetries)...")
+                Log.w(TAG, "网络错误: ${e.message}")
+                if (retryCount >= maxRetries) {
+                    throw Exception("网络错误: ${e.message}")
+                }
+                retryCount++
+                Thread.sleep(1000L)
+                continue
+            }
 
             if (response.isSuccessful) {
                 return response.body?.string() ?: throw Exception("Empty response")
             }
 
-            // 429 频率限制，等待后重试
+            // 429 频率限制，等待后重试（1s、2s、3s，避免总等待过长）
             if (response.code == 429 && retryCount < maxRetries) {
                 retryCount++
-                val waitTime = 2000L * retryCount // 等待 2秒、4秒、6秒
+                val waitTime = 1000L * retryCount // 等待 1秒、2秒、3秒
+                statusListener?.invoke("遇到限流(429)，${waitTime / 1000} 秒后重试($retryCount/$maxRetries)...")
                 Log.w(TAG, "429 频率限制，等待 ${waitTime}ms 后重试 ($retryCount/$maxRetries)")
                 Thread.sleep(waitTime)
                 continue
             }
 
-            // 其他错误或非 429 错误
-            throw Exception("API call failed: ${response.code} - ${response.message}")
+            // 429 重试耗尽或非 429 错误，给出明确原因
+            val msg = if (response.code == 429) {
+                "API 限流(429)，重试 $maxRetries 次后仍失败"
+            } else {
+                "API 错误: ${response.code} - ${response.message}"
+            }
+            throw Exception(msg)
         }
 
         throw Exception("API call failed after $maxRetries retries")

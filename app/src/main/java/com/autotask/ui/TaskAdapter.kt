@@ -4,20 +4,22 @@ import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.autotask.config.AutomationTask
 import com.autotask.databinding.ItemTaskBinding
 
 /**
- * 任务列表适配器
+ * 任务列表适配器（长按拖动排序）
  */
 class TaskAdapter(
     private val onToggleEnabled: (AutomationTask, Boolean) -> Unit,
     private val onDelete: (AutomationTask) -> Unit,
     private val onExecute: (AutomationTask) -> Unit,
     private val onEdit: (AutomationTask) -> Unit,
-    private val onEditActions: (AutomationTask) -> Unit
+    private val onEditActions: (AutomationTask) -> Unit,
+    private val onMove: (from: Int, to: Int) -> Unit = { _, _ -> }
 ) : ListAdapter<AutomationTask, TaskAdapter.TaskViewHolder>(TaskDiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TaskViewHolder {
@@ -29,6 +31,37 @@ class TaskAdapter(
 
     override fun onBindViewHolder(holder: TaskViewHolder, position: Int) {
         holder.bind(getItem(position))
+    }
+
+    /**
+     * 长按拖动排序
+     */
+    fun createItemTouchHelper(): ItemTouchHelper {
+        val callback = object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0
+        ) {
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                val from = viewHolder.bindingAdapterPosition
+                val to = target.bindingAdapterPosition
+                val list = currentList.toMutableList()
+                if (from in list.indices && to in list.indices && from != to) {
+                    val item = list.removeAt(from)
+                    list.add(to, item)
+                    submitList(list)
+                    onMove(from, to)
+                }
+                return true
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+
+            override fun isLongPressDragEnabled(): Boolean = true
+        }
+        return ItemTouchHelper(callback)
     }
 
     inner class TaskViewHolder(

@@ -27,7 +27,7 @@ class TaskExecutor(
     private val repository: TaskRepository
 ) {
     companion object {
-        private const val TAG = "TaskExecutor"
+        private const val TAG = "AT-TaskExecutor"
 
         @Volatile
         var instance: TaskExecutor? = null
@@ -173,9 +173,9 @@ class TaskExecutor(
             // 自动启动目标应用：任务绑定了 packageName 且步骤里没有「启动应用」步骤时，
             // 引擎先拉起目标 App（解决 AI 解析生成的任务第一步是"点击 APP 图标"导致应用未被拉起的问题）
             if (task.packageName.isNotEmpty() && task.steps.firstOrNull()?.action != StepAction.LAUNCH) {
-                val autoLaunched = AutoTaskAccessibilityService.instance?.launchApp(task.packageName) ?: false
+                val autoLaunched = AutoTaskAccessibilityService.instance?.launchApp(resolveLaunchPackage(task)) ?: false
                 if (autoLaunched) {
-                    Log.i(TAG, "已自动启动目标应用: ${task.packageName}")
+                    Log.i(TAG, "已自动启动目标应用: ${resolveLaunchPackage(task)}")
                     delay(config.waitAfterLaunchMs)
                     // 等页面加载完成再开始执行步骤
                     waitForPageReady()
@@ -291,11 +291,19 @@ class TaskExecutor(
     }
 
     /**
+     * 解析任务的实际启动包名：
+     * 小程序任务（packageName = "miniapp:名称"）实际启动微信，再通过微信内导航进入小程序
+     */
+    private fun resolveLaunchPackage(task: AutomationTask): String {
+        return if (task.packageName.startsWith("miniapp:")) "com.tencent.mm" else task.packageName
+    }
+
+    /**
      * 启动应用
      */
     private suspend fun executeLaunch(task: AutomationTask, stepIndex: Int): StepResult {
         val step = task.steps.getOrNull(stepIndex) ?: TaskStep(StepAction.LAUNCH)
-        val launched = AutoTaskAccessibilityService.instance?.launchApp(task.packageName) ?: false
+        val launched = AutoTaskAccessibilityService.instance?.launchApp(resolveLaunchPackage(task)) ?: false
 
         return if (launched) {
             delay(config.waitAfterLaunchMs)
@@ -424,11 +432,17 @@ class TaskExecutor(
 
         // 1. 立即查找 + 等待重试（元素可能异步加载/延迟出现）
         var node = AutoTaskAccessibilityService.findNodeByText(targetText)
+        if (node == null) {
+            Log.d(TAG, "首次未找到「$targetText」，等待重试")
+        }
         var retry = 0
         while (node == null && retry < 3) {
             delay(600)
             node = AutoTaskAccessibilityService.findNodeByText(targetText)
             retry++
+            if (node == null) {
+                Log.d(TAG, "重试 $retry/3 仍未找到「$targetText」")
+            }
         }
         if (node != null) {
             return clickFoundNode(node, step, "无障碍点击成功")
@@ -460,6 +474,19 @@ class TaskExecutor(
         val clickTarget = AutoTaskAccessibilityService.findClickableSelfOrAncestor(node) ?: node
         val rect = android.graphics.Rect()
         clickTarget.getBoundsInScreen(rect)
+
+        // 坐标有效性检查：bounds 无效（0,0 或不在屏幕内）说明节点数据失效，
+        // 直接返回失败走视觉兜底，绝不能点 (0,0) 还报成功
+        val displayMetrics = context.resources.displayMetrics
+        val screenRect = android.graphics.Rect(0, 0, displayMetrics.widthPixels, displayMetrics.heightPixels)
+        if (rect.width() <= 0 || rect.height() <= 0 || !android.graphics.Rect.intersects(rect, screenRect)) {
+            Log.w(TAG, "节点坐标无效: $rect 节点=\"${clickTarget.text}\" class=${clickTarget.className}，返回失败")
+            clickTarget.recycle()
+            if (clickTarget !== node) {
+                node.recycle()
+            }
+            return StepResult(false, step, "节点坐标无效")
+        }
 
         val success = try {
             clickTarget.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)

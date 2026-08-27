@@ -40,7 +40,7 @@ import java.io.FileOutputStream
 class AutoTaskAccessibilityService : AccessibilityService() {
 
     companion object {
-        private const val TAG = "AutoTaskA11y"
+        private const val TAG = "AT-A11y"
         private const val CHANNEL_ID = "autotask_accessibility"
         private const val NOTIFICATION_ID = 1001
 
@@ -357,13 +357,20 @@ class AutoTaskAccessibilityService : AccessibilityService() {
 
     /**
      * 从系统查找的多个候选中选最佳节点：
-     * 1. 优先可见节点（过滤掉屏幕外/不可见）
+     * 1. 优先可见且有有效坐标的节点（过滤掉屏幕外/不可见/bounds 为 0 的失效节点）
      * 2. 精确匹配（节点文本 == 搜索词）
      * 3. 文本最短的包含匹配（"我的"优先于"我的智能设备"）
      * 4. 兜底第一个
      */
     private fun pickBestMatch(matches: List<AccessibilityNodeInfo>, term: String): AccessibilityNodeInfo {
-        val visible = matches.filter { it.isVisibleToUser }
+        // 有有效 bounds 的节点（避免选到坐标 (0,0) 的失效节点）
+        fun hasValidBounds(n: AccessibilityNodeInfo): Boolean {
+            val rect = Rect()
+            n.getBoundsInScreen(rect)
+            return rect.width() > 0 && rect.height() > 0
+        }
+
+        val visible = matches.filter { it.isVisibleToUser && hasValidBounds(it) }
         val pool = if (visible.isNotEmpty()) visible else matches
 
         // 精确匹配

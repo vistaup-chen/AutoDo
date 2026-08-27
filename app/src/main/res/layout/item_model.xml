@@ -7,20 +7,48 @@
     android:padding="8dp"
     android:background="?attr/selectableItemBackground">
 
+    <!-- 内容区：点击 = 切换当前模型 -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/tv_model_name"
-            android:layout_width="wrap_content"
+        <!-- 模型名 + 当前标记（同一行，点击都是切换） -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="模型名称"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:textColor="#333333" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tv_model_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="模型名称"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="#333333"
+                android:singleLine="true"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tv_current"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="当前"
+                android:textSize="10sp"
+                android:textColor="#FFFFFF"
+                android:background="#4CAF50"
+                android:paddingStart="6dp"
+                android:paddingEnd="6dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:layout_marginStart="8dp"
+                android:visibility="gone" />
+
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tv_model_url"
@@ -30,32 +58,20 @@
             android:textSize="11sp"
             android:textColor="#666666"
             android:singleLine="true"
-            android:ellipsize="end" />
+            android:ellipsize="end"
+            android:layout_marginTop="2dp" />
 
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/tv_current"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="当前"
-        android:textSize="10sp"
-        android:textColor="#FFFFFF"
-        android:background="#4CAF50"
-        android:paddingStart="6dp"
-        android:paddingEnd="6dp"
-        android:paddingTop="2dp"
-        android:paddingBottom="2dp"
-        android:layout_marginEnd="8dp"
-        android:visibility="gone" />
-
+    <!-- 删除按钮：明确 40dp 触摸区，与内容区隔离，避免误触 -->
     <ImageButton
         android:id="@+id/btn_delete_model"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="12dp"
         android:src="@android:drawable/ic_menu_delete"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="删除"
+        android:contentDescription="删除该模型"
         android:tint="#F44336" />
 
 </LinearLayout>

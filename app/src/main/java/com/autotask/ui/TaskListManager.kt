@@ -29,7 +29,7 @@ class TaskListManager(
     private val repository: TaskRepository
 ) {
     companion object {
-        private const val TAG = "TaskListManager"
+        private const val TAG = "AT-TaskListManager"
     }
 
     // 当前上下文（用于对话框）
@@ -37,6 +37,109 @@ class TaskListManager(
 
     // 当前选中的应用
     private var selectedApp: AppChooserDialog.AppItem? = null
+
+    // 当前选中的小程序（与 selectedApp 互斥）
+    private var selectedMiniProgram: String? = null
+
+    // 常用小程序清单（选择器用；也可手动输入任意名称）
+    private val commonMiniPrograms = listOf(
+        "龙湖天街", "比亚迪汽车", "微信支付", "京东购物", "美团", "饿了么",
+        "肯德基+", "麦当劳", "滴滴出行", "铁路12306", "中国联通", "中国移动"
+    )
+
+    /**
+     * 显示小程序选择对话框：内置常用清单 + 自定义输入
+     */
+    private fun showMiniProgramDialog(context: Context, onSelected: (String) -> Unit) {
+        val dp = context.resources.displayMetrics.density
+        var dialogRef: AlertDialog? = null
+
+        val container = android.widget.LinearLayout(context).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding((20 * dp).toInt(), (4 * dp).toInt(), (20 * dp).toInt(), 0)
+        }
+
+        // 自定义输入框
+        container.addView(android.widget.EditText(context).apply {
+            hint = "输入小程序名称（如：龙湖天街）"
+            setSingleLine(true)
+        })
+
+        // 常用清单
+        container.addView(android.widget.TextView(context).apply {
+            text = "常用小程序（点击选择）："
+            textSize = 13f
+            setPadding(0, (14 * dp).toInt(), 0, (4 * dp).toInt())
+            setTextColor(0xFF757575.toInt())
+        })
+        for (mini in commonMiniPrograms) {
+            container.addView(android.widget.TextView(context).apply {
+                text = "・ $mini"
+                textSize = 14f
+                setPadding((10 * dp).toInt(), (8 * dp).toInt(), 0, (8 * dp).toInt())
+                setOnClickListener {
+                    onSelected(mini)
+                    dialogRef?.dismiss()
+                }
+            })
+        }
+
+        val dialog = AlertDialog.Builder(context)
+            .setTitle("选择小程序")
+            .setView(container)
+            .setPositiveButton("确定", null)
+            .setNegativeButton("取消", null)
+            .create()
+        dialogRef = dialog
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val name = (container.getChildAt(0) as android.widget.EditText).text.toString().trim()
+                if (name.isEmpty()) {
+                    Toast.makeText(context, "请输入小程序名称", Toast.LENGTH_SHORT).show()
+                } else {
+                    onSelected(name)
+                    dialog.dismiss()
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    /**
+     * 生成小程序任务的微信导航步骤（零门槛拉起方式：发现 → 小程序 → 搜索 → 点击）
+     */
+    private fun buildMiniProgramSteps(miniProgramName: String): List<com.autotask.config.TaskStep> {
+        return listOf(
+            com.autotask.config.TaskStep(StepAction.LAUNCH),  // 启动微信（执行层解析 miniapp: 前缀）
+            com.autotask.config.TaskStep(StepAction.CLICK, hint = "发现"),
+            com.autotask.config.TaskStep(StepAction.CLICK, hint = "小程序"),
+            com.autotask.config.TaskStep(StepAction.CLICK, hint = "搜索小程序"),
+            com.autotask.config.TaskStep(StepAction.INPUT, hint = "搜索小程序", inputText = miniProgramName),
+            com.autotask.config.TaskStep(StepAction.WAIT, duration = 3),
+            com.autotask.config.TaskStep(StepAction.CLICK, hint = miniProgramName)
+        )
+    }
+
+    /**
+     * 展开 AI 解析出的"小程序启动"步骤：
+     * launch 步骤 hint 形如"小程序:龙湖天街" → 展开为完整的微信导航步骤序列
+     */
+    private fun expandMiniProgramSteps(steps: List<com.autotask.config.TaskStep>): List<com.autotask.config.TaskStep> {
+        val result = mutableListOf<com.autotask.config.TaskStep>()
+        for (step in steps) {
+            if (step.action == StepAction.LAUNCH && step.hint.startsWith("小程序:")) {
+                val name = step.hint.removePrefix("小程序:").trim()
+                if (name.isNotEmpty()) {
+                    Log.d(TAG, "展开小程序启动步骤: 小程序=$name")
+                    result.addAll(buildMiniProgramSteps(name))
+                    continue
+                }
+            }
+            result.add(step)
+        }
+        return result
+    }
 
     /**
      * 显示编辑任务对话框
@@ -91,7 +194,7 @@ class TaskListManager(
                     tvLoadingText.text = "正在调用 AI 接口..."
                     val config = repository.getGlobalConfig()
                     tvLoadingText.text = "正在解析步骤..."
-                    val textClient = ModelClient(config.textModel)
+                    val textClient = createTextClient(config) { msg -> tvLoadingText.text = msg }
                     val steps = textClient.parseTextToSteps(inputDesc, etPackageName.text.toString().trim())
 
                     layoutLoading.visibility = android.view.View.GONE
@@ -248,6 +351,17 @@ class TaskListManager(
     private var currentParsedSteps: List<StepInfo> = emptyList()
 
     /**
+     * 创建带状态回调的文本模型客户端：429 限流/超时/网络错误等进度实时回调到 UI
+     */
+    private fun createTextClient(config: com.autotask.config.GlobalConfig, onStatus: (String) -> Unit): ModelClient {
+        return ModelClient(config.textModel).apply {
+            statusListener = { msg ->
+                android.os.Handler(android.os.Looper.getMainLooper()).post { onStatus(msg) }
+            }
+        }
+    }
+
+    /**
      * 加载步骤到只读列表
      */
     private fun loadStepsToReadonlyList(task: AutomationTask, rvSteps: RecyclerView, btnEditActions: android.widget.Button) {
@@ -285,7 +399,7 @@ class TaskListManager(
             return
         }
 
-        val layoutManager = androidx.recyclerview.widget.LinearLayoutManager(rvSteps.context)
+        val layoutManager = WrapContentLinearLayoutManager(rvSteps.context)
         val adapter = ReadonlyStepListAdapter(steps)
 
         rvSteps.layoutManager = layoutManager
@@ -368,7 +482,7 @@ class TaskListManager(
                     }
                 }
             )
-            rvSteps.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(dialogView.context)
+            rvSteps.layoutManager = WrapContentLinearLayoutManager(dialogView.context)
             rvSteps.adapter = adapter
             layoutStepPreview.visibility = android.view.View.VISIBLE
         }
@@ -439,7 +553,7 @@ class TaskListManager(
             }
         )
 
-        rvSteps.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(currentContext)
+        rvSteps.layoutManager = WrapContentLinearLayoutManager(currentContext!!)
         rvSteps.adapter = adapter
         adapter.createItemTouchHelper().attachToRecyclerView(rvSteps)
 
@@ -463,7 +577,9 @@ class TaskListManager(
             scope.launch {
                 try {
                     val config = repository.getGlobalConfig()
-                    val textClient = ModelClient(config.textModel)
+                    val textClient = createTextClient(config) { msg ->
+                        Toast.makeText(currentContext, msg, Toast.LENGTH_SHORT).show()
+                    }
                     val parsedSteps = textClient.parseTextToSteps(description, task.packageName)
                     if (parsedSteps.isNotEmpty()) {
                         steps.clear()
@@ -489,7 +605,7 @@ class TaskListManager(
             .setPositiveButton("保存") { _, _ ->
                 val taskSteps = steps.map { stepInfo ->
                     when (stepInfo.action) {
-                        "launch" -> com.autotask.config.TaskStep(StepAction.LAUNCH)
+                        "launch" -> com.autotask.config.TaskStep(StepAction.LAUNCH, hint = stepInfo.hint)
                         "wait" -> com.autotask.config.TaskStep(StepAction.WAIT, duration = stepInfo.duration)
                         "click" -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
                         "input" -> com.autotask.config.TaskStep(StepAction.INPUT, hint = stepInfo.hint, inputText = stepInfo.inputText)
@@ -498,7 +614,7 @@ class TaskListManager(
                         else -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
                     }
                 }
-                val updatedTask = task.copy(steps = normalizeSteps(taskSteps))
+                val updatedTask = task.copy(steps = normalizeSteps(expandMiniProgramSteps(taskSteps)))
                 onSave(updatedTask)
             }
             .setNegativeButton("取消", null)
@@ -552,7 +668,7 @@ class TaskListManager(
             }
         )
 
-        binding.rvSteps.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(binding.root.context)
+        binding.rvSteps.layoutManager = WrapContentLinearLayoutManager(binding.root.context)
         binding.rvSteps.adapter = adapter
         binding.layoutStepPreview.visibility = android.view.View.VISIBLE
 
@@ -686,14 +802,32 @@ class TaskListManager(
             override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab?) {}
         })
 
-        // 应用选择
+        // 应用选择（与小程序互斥）
         selectedApp = null
         binding.layoutSelectedApp.setOnClickListener {
             AppChooserDialog.show(context, "选择要操作的应用") { app ->
                 selectedApp = app
+                selectedMiniProgram = null
                 binding.tvSelectedName.text = app.appName
                 binding.tvSelectedPackage.text = app.packageName
                 binding.ivSelectedIcon.setImageDrawable(app.icon)
+                binding.tvSelectedMiniprogram.visibility = android.view.View.GONE
+            }
+        }
+
+        // 小程序选择（与选应用互斥）
+        selectedMiniProgram = null
+        binding.btnSelectMiniprogram.setOnClickListener {
+            showMiniProgramDialog(context) { miniName ->
+                selectedMiniProgram = miniName
+                selectedApp = null
+                binding.tvSelectedMiniprogram.text = "已选小程序：$miniName（微信导航步骤已固定）"
+                binding.tvSelectedMiniprogram.visibility = android.view.View.VISIBLE
+                binding.tvSelectedName.text = "点击选择应用"
+                binding.tvSelectedPackage.text = ""
+                binding.ivSelectedIcon.setImageDrawable(null)
+                // 引导：描述只填进入小程序后的操作，导航步骤自动生成
+                binding.etDescription.hint = "描述进入小程序后的操作（如：点击签到，点击我的），导航步骤已自动生成"
             }
         }
 
@@ -722,7 +856,7 @@ class TaskListManager(
                     val config = repository.getGlobalConfig()
                     binding.tvLoadingText.text = "正在解析步骤..."
 
-                    val textClient = ModelClient(config.textModel)
+                    val textClient = createTextClient(config) { msg -> binding.tvLoadingText.text = msg }
                     val steps = textClient.parseTextToSteps(description, packageName)
 
                     // 隐藏加载状态
@@ -759,17 +893,48 @@ class TaskListManager(
         binding.btnConfirm.setOnClickListener {
             val name = binding.etTaskName.text.toString().trim()
             val app = selectedApp
+            val miniProgram = selectedMiniProgram
 
             if (name.isEmpty()) {
                 Toast.makeText(context, "请输入任务名称", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            if (app == null) {
-                Toast.makeText(context, "请选择应用", Toast.LENGTH_SHORT).show()
+            if (app == null && miniProgram == null) {
+                Toast.makeText(context, "请选择应用或小程序", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
             val selectedTab = binding.tabLayout.selectedTabPosition
+
+            // 小程序任务：微信导航步骤 + AI 解析的操作步骤（自动生成）
+            if (miniProgram != null) {
+                val navSteps = buildMiniProgramSteps(miniProgram)
+                // 追加 AI 解析出的操作步骤（如"点击签到"；去掉重复的启动类步骤）
+                val extraSteps = if (selectedTab == 0 && currentParsedSteps.isNotEmpty()) {
+                    currentParsedSteps.filter { it.action != "launch" }.map { stepInfo ->
+                        when (stepInfo.action) {
+                            "wait" -> com.autotask.config.TaskStep(StepAction.WAIT, duration = stepInfo.duration)
+                            "click" -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
+                            "input" -> com.autotask.config.TaskStep(StepAction.INPUT, hint = stepInfo.hint, inputText = stepInfo.inputText)
+                            "scroll" -> com.autotask.config.TaskStep(StepAction.SCROLL, hint = stepInfo.scrollDirection)
+                            "back" -> com.autotask.config.TaskStep(StepAction.BACK)
+                            else -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
+                        }
+                    }
+                } else {
+                    emptyList()
+                }
+                val allSteps = normalizeSteps(expandMiniProgramSteps(navSteps + extraSteps))
+                val task = AutomationTask(
+                    name = name,
+                    packageName = "miniapp:$miniProgram",
+                    steps = allSteps
+                )
+                onTaskCreated(task)
+                dialog.dismiss()
+                Toast.makeText(context, "小程序任务已创建（${allSteps.size} 步：微信导航 + 操作）", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
 
             if (selectedTab == 0) {
                 val description = binding.etDescription.text.toString().trim()
@@ -783,7 +948,7 @@ class TaskListManager(
                     // 使用已解析的步骤
                     val taskSteps = currentParsedSteps.map { stepInfo ->
                         when (stepInfo.action) {
-                            "launch" -> com.autotask.config.TaskStep(StepAction.LAUNCH)
+                            "launch" -> com.autotask.config.TaskStep(StepAction.LAUNCH, hint = stepInfo.hint)
                             "wait" -> com.autotask.config.TaskStep(StepAction.WAIT, duration = stepInfo.duration)
                             "click" -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
                             "input" -> com.autotask.config.TaskStep(StepAction.INPUT, hint = stepInfo.hint, inputText = stepInfo.inputText)
@@ -792,15 +957,15 @@ class TaskListManager(
                             else -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
                         }
                     }
-                    val task = AutomationTask(name = name, packageName = app.packageName, steps = normalizeSteps(taskSteps))
+                    val task = AutomationTask(name = name, packageName = app!!.packageName, steps = normalizeSteps(expandMiniProgramSteps(taskSteps)))
                     onTaskCreated(task)
                     dialog.dismiss()
                 } else {
                     // 没有解析过，走原来的流程
-                    createTaskFromDescription(context, name, app.packageName, description, dialog, onTaskCreated)
+                    createTaskFromDescription(context, name, app!!.packageName, description, dialog, onTaskCreated)
                 }
             } else {
-                startTeachMode(context, name, app.packageName, dialog, onTaskCreated)
+                startTeachMode(context, name, app!!.packageName, dialog, onTaskCreated)
             }
         }
 
@@ -819,14 +984,25 @@ class TaskListManager(
         onTaskCreated: (AutomationTask) -> Unit
     ) {
         val config = repository.getGlobalConfig()
-        val textClient = ModelClient(config.textModel)
 
-        Toast.makeText(context, "正在解析描述...", Toast.LENGTH_SHORT).show()
+        // AI 解析 loading 对话框（防止用户不知道在干嘛）
+        val loadingDialog = AlertDialog.Builder(context)
+            .setTitle("正在解析")
+            .setMessage("正在调用 AI 将描述转换为操作步骤，请稍候...")
+            .setCancelable(false)
+            .create()
+        loadingDialog.show()
+
+        // 详细进度：429 限流/超时等实时显示在 loading 对话框里
+        val textClient = createTextClient(config) { msg ->
+            loadingDialog.setMessage("正在调用 AI 将描述转换为操作步骤...\n\n$msg")
+        }
 
         val scope = CoroutineScope(Dispatchers.Main)
         scope.launch {
             try {
                 val steps = textClient.parseTextToSteps(description, packageName)
+                loadingDialog.dismiss()
                 if (steps.isEmpty()) {
                     Toast.makeText(context, "AI 解析失败，请尝试更详细的描述", Toast.LENGTH_SHORT).show()
                     return@launch
@@ -852,7 +1028,7 @@ class TaskListManager(
                     .setPositiveButton("确认保存") { _, _ ->
                         val taskSteps = steps.map { stepInfo ->
                             when (stepInfo.action) {
-                                "launch" -> com.autotask.config.TaskStep(StepAction.LAUNCH)
+                                "launch" -> com.autotask.config.TaskStep(StepAction.LAUNCH, hint = stepInfo.hint)
                                 "wait" -> com.autotask.config.TaskStep(StepAction.WAIT, duration = stepInfo.duration)
                                 "click" -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
                                 "input" -> com.autotask.config.TaskStep(StepAction.INPUT, hint = stepInfo.hint, inputText = stepInfo.inputText)
@@ -864,7 +1040,7 @@ class TaskListManager(
                         val task = AutomationTask(
                             name = name,
                             packageName = packageName,
-                            steps = normalizeSteps(taskSteps)
+                            steps = normalizeSteps(expandMiniProgramSteps(taskSteps))
                         )
                         onTaskCreated(task)
                         dialog.dismiss()
@@ -873,6 +1049,7 @@ class TaskListManager(
                     .show()
 
             } catch (e: Exception) {
+                loadingDialog.dismiss()
                 Log.e(TAG, "解析描述失败: ${e.message}")
                 Toast.makeText(context, "解析失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }

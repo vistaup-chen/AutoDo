@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
 
     companion object {
-        private const val TAG = "MainActivity"
+        private const val TAG = "AT-MainActivity"
         private const val REQUEST_OVERLAY = 1001
         private const val REQUEST_NOTIFICATION = 1002
         private const val REQUEST_SCREENSHOT = 1003
@@ -98,10 +98,13 @@ class MainActivity : AppCompatActivity() {
             onDelete = { task -> deleteTask(task) },
             onExecute = { task -> executeSingleTask(task) },
             onEdit = { task -> showEditTaskDialog(task) },
-            onEditActions = { task -> showStepEditorDialog(task) }
+            onEditActions = { task -> showStepEditorDialog(task) },
+            onMove = { from, to -> handleTaskMove(from, to) }
         )
         binding.rvTasks.layoutManager = LinearLayoutManager(this)
         binding.rvTasks.adapter = taskAdapter
+        // 长按拖动排序
+        taskAdapter.createItemTouchHelper().attachToRecyclerView(binding.rvTasks)
 
         // 开启无障碍按钮
         binding.btnEnableAccessibility.setOnClickListener {
@@ -458,6 +461,21 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val tasks = repository.getAllTasks()
             taskAdapter.submitList(tasks)
+        }
+    }
+
+    /**
+     * 任务拖拽排序后保存新顺序（列表顺序 = 执行顺序）
+     */
+    private fun handleTaskMove(from: Int, to: Int) {
+        lifecycleScope.launch {
+            val tasks = repository.getAllTasks().toMutableList()
+            if (from in tasks.indices && to in tasks.indices && from != to) {
+                val item = tasks.removeAt(from)
+                tasks.add(to, item)
+                repository.saveAllTasks(tasks)
+                refreshTaskList()
+            }
         }
     }
 

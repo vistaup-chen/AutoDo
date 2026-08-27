@@ -14,7 +14,7 @@ import com.autotask.service.AutoTaskAccessibilityService
 class BootReceiver : BroadcastReceiver() {
 
     companion object {
-        private const val TAG = "BootReceiver"
+        private const val TAG = "AT-BootReceiver"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
