@@ -132,6 +132,7 @@ class SettingsActivity : AppCompatActivity() {
         binding.etStepTimeout.addTextChangedListener(textWatcher)
         binding.etMaxRetries.addTextChangedListener(textWatcher)
         binding.etLaunchWait.addTextChangedListener(textWatcher)
+        binding.etBetweenTasksWait.addTextChangedListener(textWatcher)
 
         // 策略单选
         binding.rbAuto.setOnCheckedChangeListener { _, isChecked -> if (isChecked) onSettingsChanged() }
@@ -251,6 +252,7 @@ class SettingsActivity : AppCompatActivity() {
             textAdapter = ModelListAdapter(
                 textModels,
                 { currentTextIndex },
+                label = "文本",
                 onDelete = { pos ->
                     android.util.Log.d(TAG, ">>> 触发删除: pos=$pos 模型=${textModels.getOrNull(pos)?.modelName} 当前数量=${textModels.size}")
                     if (textModels.size > 1) {
@@ -350,6 +352,7 @@ class SettingsActivity : AppCompatActivity() {
             visionAdapter = ModelListAdapter(
                 visionModels,
                 { currentVisionIndex },
+                label = "视觉",
                 onDelete = { pos ->
                     android.util.Log.d(TAG, ">>> [视觉] 触发删除: pos=$pos 模型=${visionModels.getOrNull(pos)?.modelName} 当前数量=${visionModels.size}")
                     if (visionModels.size > 1) {
@@ -568,6 +571,7 @@ class SettingsActivity : AppCompatActivity() {
         binding.etStepTimeout.setText(config.stepTimeoutMs.toString())
         binding.etMaxRetries.setText(config.maxRetries.toString())
         binding.etLaunchWait.setText(config.waitAfterLaunchMs.toString())
+        binding.etBetweenTasksWait.setText(config.waitBetweenTasksMs.toString())
 
         // 策略
         when (config.strategy) {
@@ -581,6 +585,15 @@ class SettingsActivity : AppCompatActivity() {
         updateVisionCardVisibility(config.unifiedModel)
 
         isApplyingSettings = false
+
+        // 强制重测列表高度：ScrollView 嵌套 RecyclerView 时首次布局高度常测不够，
+        // 导致数据有多个但只渲染第一个（"默认只显示一个"）——进入页面后主动重测一次 + 延迟再补一次
+        binding.rvTextModels.post { binding.rvTextModels.requestLayout() }
+        binding.rvVisionModels.post { binding.rvVisionModels.requestLayout() }
+        binding.root.postDelayed({
+            binding.rvTextModels.requestLayout()
+            binding.rvVisionModels.requestLayout()
+        }, 300)
     }
 
     private fun updateVisionCardVisibility(unified: Boolean) {
@@ -615,6 +628,7 @@ class SettingsActivity : AppCompatActivity() {
             stepTimeoutMs = binding.etStepTimeout.text.toString().toLongOrNull() ?: 10000,
             maxRetries = binding.etMaxRetries.text.toString().toIntOrNull() ?: 3,
             waitAfterLaunchMs = binding.etLaunchWait.text.toString().toLongOrNull() ?: 3000,
+            waitBetweenTasksMs = binding.etBetweenTasksWait.text.toString().toLongOrNull() ?: 2000,
             strategy = strategy,
             unifiedModel = binding.switchUnifiedModel.isChecked
         )

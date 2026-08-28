@@ -19,7 +19,8 @@ class ModelListAdapter(
     private val getCurrentIndex: () -> Int,
     private val onDelete: (Int) -> Unit,
     private val onSelect: (Int) -> Unit,
-    private val onMove: (Int, Int) -> Unit = { _, _ -> }
+    private val onMove: (Int, Int) -> Unit = { _, _ -> },
+    private val label: String = "" // 日志标识：文本/视觉，便于区分两个列表
 ) : RecyclerView.Adapter<ModelListAdapter.ModelViewHolder>() {
 
     class ModelViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -53,7 +54,7 @@ class ModelListAdapter(
         holder.btnDelete.setOnClickListener { onDelete(holder.bindingAdapterPosition) }
         // 点击行其他区域 = 切换当前模型
         holder.itemView.setOnClickListener { onSelect(holder.bindingAdapterPosition) }
-        android.util.Log.d("AT-Settings", "绑定列表项: pos=$position 模型=${model.modelName} 总数=${models.size}")
+        android.util.Log.d("AT-Settings", "[$label] 绑定列表项: pos=$position 模型=${model.modelName} 总数=${models.size}")
     }
 
     override fun getItemCount(): Int = models.size

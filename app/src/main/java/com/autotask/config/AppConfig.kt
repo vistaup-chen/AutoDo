@@ -51,6 +51,7 @@ data class GlobalConfig(
     @SerializedName("step_timeout_ms") val stepTimeoutMs: Long = 10000,
     @SerializedName("max_retries") val maxRetries: Int = 3,
     @SerializedName("wait_after_launch_ms") val waitAfterLaunchMs: Long = 3000,
+    @SerializedName("wait_between_tasks_ms") val waitBetweenTasksMs: Long = 2000, // 多任务之间间隔：上一个任务最后一步操作（如签到）动画/请求完成后再切下一个应用
     @SerializedName("strategy") val strategy: String = "auto", // auto, accessibility, vision
     @SerializedName("auto_switch_model") val autoSwitchModel: Boolean = true, // 自动切换模型
     @SerializedName("unified_model") val unifiedModel: Boolean = false // 文本/视觉共用同一模型（适合多模态模型）

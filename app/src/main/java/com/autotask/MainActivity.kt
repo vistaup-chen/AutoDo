@@ -543,12 +543,19 @@ class MainActivity : AppCompatActivity() {
             Log.i(TAG, "一键执行开始：共 ${tasks.size} 个任务")
             var successCount = 0
             var failCount = 0
+            val waitBetween = repository.getGlobalConfig().waitBetweenTasksMs
             for ((index, task) in tasks.withIndex()) {
                 Log.i(TAG, ">>> 第 ${index + 1}/${tasks.size} 个任务: ${task.name} (enabled=${task.enabled})")
                 val result = taskExecutor.executeTask(task)
                 Log.i(TAG, "<<< 第 ${index + 1}/${tasks.size} 个任务结束: ${task.name} - success=${result.success} msg=${result.message}")
                 repository.updateTaskResult(task.id, result.success)
                 if (result.success) successCount++ else failCount++
+                // 任务之间留间隔：上一个任务最后一步操作（如签到）的动画/网络请求可能还在进行，
+                // 等它完成再切下一个应用，避免"刚点了签到就被切走"
+                if (index < tasks.size - 1) {
+                    Log.i(TAG, "任务间隔等待 ${waitBetween}ms 后继续下一个任务")
+                    delay(waitBetween)
+                }
             }
 
             Log.i(TAG, "一键执行完成：$successCount 成功, $failCount 失败")

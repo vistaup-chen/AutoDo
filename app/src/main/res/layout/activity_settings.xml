@@ -394,6 +394,21 @@
 
                     </com.google.android.material.textfield.TextInputLayout>
 
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="任务间隔 (毫秒，多任务之间留出完成时间)">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/et_between_tasks_wait"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="number"
+                            android:text="2000" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
                     <!-- 策略选择 -->
                     <TextView
                         android:layout_width="wrap_content"
