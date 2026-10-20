@@ -90,6 +90,14 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshTaskList()
         updatePermissionStatus()
+        // 从系统权限页返回后继续引导下一项
+        checkPermissions()
+    }
+
+    override fun onDestroy() {
+        FloatingWindowService.teachCallback = null
+        FloatingWindowService.debugCallback = null
+        super.onDestroy()
     }
 
     private fun setupUI() {
@@ -251,53 +259,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private var permissionDialogShowing = false
+    private var accessibilityReminderShown = false
+
     private fun checkPermissions() {
         updatePermissionStatus()
-        val prefs = getSharedPreferences("auto_task", MODE_PRIVATE)
-        if (!prefs.getBoolean("initial_permission_setup_done", false)) {
-            prefs.edit().putBoolean("initial_permission_setup_done", true).apply()
-            requestAllPermissionsSequentially()
-            return
-        }
-        // 后续启动不再逐个弹窗；只有无障碍丢失（任务无法执行）才强制提醒
-        if (!AutoTaskAccessibilityService.isAccessibilityServiceEnabled(this)) {
-            showPermissionRationaleDialog(
-                "无障碍服务",
-                "无障碍服务未开启，自动化任务无法执行。请在设置中开启「AutoTask」。",
-                { openAccessibilitySettings() }
-            )
-        } else if (!isIgnoringBatteryOptimizations() && !prefs.getBoolean("battery_whitelist_asked", false)) {
-            prefs.edit().putBoolean("battery_whitelist_asked", true).apply()
-            showPermissionRationaleDialog(
-                "后台运行权限",
-                "为了确保自动化任务在后台稳定运行，请允许本应用「不受电池优化」。",
-                { requestIgnoreBatteryOptimizations() }
-            )
-        }
+        if (permissionDialogShowing) return
+        requestAllPermissionsSequentially()
     }
 
-    // 是否已请求过电池优化白名单（首次引导流程内使用）
-    private var hasAskedBatteryOptimization = false
-
     /**
-     * 按顺序申请所有需要的权限
-     * 只在权限未授予时才请求，已授予则跳过
+     * 按顺序引导权限：一次只弹一个说明框，用户从系统设置返回后由 onResume 继续下一项。
+     * 已拒绝过的可选项用 SharedPreferences 记住，避免每次回前台都纠缠
      */
     private fun requestAllPermissionsSequentially() {
-        // 1. 检查无障碍服务 - 未开启则引导
+        val prefs = getSharedPreferences("auto_task", MODE_PRIVATE)
+
+        // 1. 无障碍服务（必需）：每次启动最多提醒一次
         if (!AutoTaskAccessibilityService.isAccessibilityServiceEnabled(this)) {
-            showPermissionRationaleDialog(
-                "无障碍服务",
-                "无障碍服务用于识别界面元素并执行自动操作，必须开启才能使用本应用。\n\n" +
-                        "开启后请勿关闭本应用的后台运行权限，否则无障碍服务可能被系统回收。",
-                { openAccessibilitySettings() }
-            )
+            if (!accessibilityReminderShown) {
+                accessibilityReminderShown = true
+                showPermissionRationaleDialog(
+                    "无障碍服务",
+                    "无障碍服务用于识别界面元素并执行自动操作，必须开启才能使用本应用。\n\n" +
+                            "开启后请勿关闭本应用的后台运行权限，否则无障碍服务可能被系统回收。",
+                    { openAccessibilitySettings() }
+                )
+            }
             return
         }
 
-        // 2. 请求电池优化白名单（防止系统杀掉无障碍服务）
-        if (!hasAskedBatteryOptimization && !isIgnoringBatteryOptimizations()) {
-            hasAskedBatteryOptimization = true
+        // 2. 电池白名单（防止系统杀掉无障碍服务），只引导一次
+        if (!isIgnoringBatteryOptimizations() && !prefs.getBoolean("battery_whitelist_asked", false)) {
+            prefs.edit().putBoolean("battery_whitelist_asked", true).apply()
             showPermissionRationaleDialog(
                 "后台运行权限",
                 "为了确保自动化任务在后台稳定运行，请在接下来的设置中允许本应用「不受电池优化」。\n\n" +
@@ -307,8 +301,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // 3. 检查悬浮窗权限 - 未授予则引导
-        if (!Settings.canDrawOverlays(this)) {
+        // 3. 悬浮窗（建议），只引导一次
+        if (!Settings.canDrawOverlays(this) && !prefs.getBoolean("overlay_asked", false)) {
+            prefs.edit().putBoolean("overlay_asked", true).apply()
             showPermissionRationaleDialog(
                 "悬浮窗权限",
                 "悬浮窗权限用于显示执行进度，建议开启以便了解任务执行情况。",
@@ -317,23 +312,17 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // 4. 检查通知权限 - 未授予则请求
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATION)
-            }
+        // 4. 通知（建议），只请求一次
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            !prefs.getBoolean("notification_requested", false)
+        ) {
+            prefs.edit().putBoolean("notification_requested", true).apply()
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATION)
+            return
         }
 
-        // 5. 截屏授权（Android 11 以下没有无障碍截图 API，视觉兜底依赖 MediaProjection）
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R && !ScreenshotService.hasPermission() && !hasAskedScreenCapture) {
-            hasAskedScreenCapture = true
-            showPermissionRationaleDialog(
-                "截屏权限",
-                "视觉识别需要截取屏幕内容来定位界面元素。请在下个系统弹窗中点击「允许」。\n\n" +
-                        "不授权时仍可使用纯无障碍模式，但视觉兜底不可用。",
-                { ScreenshotService.requestPermission(this) }
-            )
-        }
+        // 截屏授权不在这里弹：纯无障碍任务不需要截图，只在执行视觉兜底时按需请求
     }
 
     private var hasAskedScreenCapture = false
@@ -395,11 +384,14 @@ class MainActivity : AppCompatActivity() {
      * 显示权限说明对话框
      */
     private fun showPermissionRationaleDialog(title: String, message: String, onConfirm: () -> Unit) {
+        if (permissionDialogShowing) return
+        permissionDialogShowing = true
         AlertDialog.Builder(this)
             .setTitle("需要 $title 权限")
             .setMessage(message)
             .setPositiveButton("去开启") { _, _ -> onConfirm() }
             .setNegativeButton("稍后提醒", null)
+            .setOnDismissListener { permissionDialogShowing = false }
             .show()
     }
 
