@@ -85,7 +85,7 @@
                 android:layout_height="36dp"
                 android:layout_weight="1"
                 android:text="重试"
-                android:textSize="12sp"
+                android:textSize="11sp"
                 style="@style/Widget.Material3.Button.OutlinedButton" />
 
             <com.google.android.material.button.MaterialButton
@@ -94,8 +94,8 @@
                 android:layout_height="36dp"
                 android:layout_weight="1"
                 android:layout_marginStart="4dp"
-                android:text="手动指定"
-                android:textSize="12sp"
+                android:text="手动完成"
+                android:textSize="11sp"
                 style="@style/Widget.Material3.Button.TonalButton" />
 
             <com.google.android.material.button.MaterialButton
@@ -104,8 +104,18 @@
                 android:layout_height="36dp"
                 android:layout_weight="1"
                 android:layout_marginStart="4dp"
-                android:text="继续"
-                android:textSize="12sp" />
+                android:text="跳过"
+                android:textSize="11sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_abort"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:text="终止"
+                android:textSize="11sp"
+                android:backgroundTint="#C62828" />
 
         </LinearLayout>
 

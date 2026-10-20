@@ -51,7 +51,7 @@ class SettingsActivity : AppCompatActivity() {
         ApiPreset("通义千问", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", "qwen-max", "qwen-vl-max", true),
         ApiPreset("OpenAI", "https://api.openai.com/v1/chat/completions", "gpt-4o-mini", "gpt-4o", true),
         ApiPreset("DeepSeek", "https://api.deepseek.com/v1/chat/completions", "deepseek-chat", "", true),
-        ApiPreset("智谱 GLM", "https://open.bigmodel.cn/api/paas/v4/chat/completions", "glm-4.7-flash", "GLM-4.1V-Thinking-Flash", true),
+        ApiPreset("智谱 GLM（免费档）", "https://open.bigmodel.cn/api/paas/v4/chat/completions", "glm-4.7-flash", "glm-4.6v-flash", true),
         ApiPreset("Moonshot", "https://api.moonshot.cn/v1/chat/completions", "moonshot-v1-8k", "", true),
         ApiPreset("字节豆包", "https://ark.cn-beijing.volces.com/api/v3/chat/completions", "ep-xxxxxxxx", "", true),
         ApiPreset("SenseNova", "https://token.sensenova.cn/v1/chat/completions", "sensenova-6.8-flash-lite", "sensenova-6.8-flash-lite", true)
@@ -61,7 +61,7 @@ class SettingsActivity : AppCompatActivity() {
         ApiPreset("V1 (本地默认)", "http://127.0.0.1:8081/v1", "Qwen2-VL-2B-Instruct", "", false),
         ApiPreset("通义千问", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", "", "qwen-vl-max", true),
         ApiPreset("OpenAI", "https://api.openai.com/v1/chat/completions", "", "gpt-4o", true),
-        ApiPreset("智谱 GLM", "https://open.bigmodel.cn/api/paas/v4/chat/completions", "", "GLM-4.1V-Thinking-Flash", true),
+        ApiPreset("智谱 GLM（免费档）", "https://open.bigmodel.cn/api/paas/v4/chat/completions", "", "glm-4.6v-flash", true),
         ApiPreset("SenseNova", "https://token.sensenova.cn/v1/chat/completions", "", "sensenova-6.8-flash-lite", true)
     )
 
@@ -617,14 +617,15 @@ class SettingsActivity : AppCompatActivity() {
             else -> "auto"
         }
 
-        val newConfig = GlobalConfig(
+        // 用 copy 而不是重新构造：保留 autoSwitchModel 等没有对应控件的字段
+        val newConfig = repository.getGlobalConfig().copy(
             modelGroup = ModelConfigGroup(
                 textModels = textModels.toList(),
                 visionModels = visionModels.toList(),
                 currentTextIndex = currentTextIndex,
                 currentVisionIndex = currentVisionIndex
             ),
-            clickDelayMs = binding.etClickDelay.text.toString().toLongOrNull() ?: 500,
+            clickDelayMs = binding.etClickDelay.text.toString().toLongOrNull() ?: 1000,
             stepTimeoutMs = binding.etStepTimeout.text.toString().toLongOrNull() ?: 10000,
             maxRetries = binding.etMaxRetries.text.toString().toIntOrNull() ?: 3,
             waitAfterLaunchMs = binding.etLaunchWait.text.toString().toLongOrNull() ?: 3000,
@@ -684,8 +685,14 @@ class SettingsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val client = ModelClient(ModelConfig(apiBase = apiBase, apiKey = apiKey, modelName = modelName))
-                // 视觉模型用简单的文本测试（不传图）
-                val response = client.askText("你好，请回复'连接成功'")
+                // 真实发一张图，才能验证端点支持视觉输入（只发文本测不出视觉能力）
+                val testBitmap = android.graphics.Bitmap.createBitmap(64, 64, android.graphics.Bitmap.Config.ARGB_8888)
+                testBitmap.eraseColor(android.graphics.Color.WHITE)
+                val response = try {
+                    client.askVision("只回复：连接成功", testBitmap)
+                } finally {
+                    testBitmap.recycle()
+                }
                 Toast.makeText(this@SettingsActivity, (if (unified) "共用模型连接成功: " else "视觉模型连接成功: ") + response, Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(this@SettingsActivity, (if (unified) "共用模型连接失败: " else "视觉模型连接失败: ") + (e.message ?: ""), Toast.LENGTH_LONG).show()

@@ -18,6 +18,7 @@ import com.autotask.model.ModelClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 任务执行引擎 - 双策略执行 + 调试支持
@@ -38,7 +39,7 @@ class TaskExecutor(
         instance = this
     }
 
-    private val config: GlobalConfig = repository.getGlobalConfig()
+    private var config: GlobalConfig = repository.getGlobalConfig()
     private var textClient = ModelClient(config.textModel)
     private var visionClient = ModelClient(if (config.unifiedModel) config.textModel else config.visionModel)
 
@@ -46,18 +47,31 @@ class TaskExecutor(
     private val modelSwitchLock = Any()
 
     /**
-     * 切换文本模型
+     * 设置页修改后无需重启 App：执行前比对配置，有变化则重建客户端
+     */
+    private fun refreshConfigIfChanged() {
+        val latest = repository.getGlobalConfig()
+        if (latest == config) return
+        config = latest
+        textClient = ModelClient(latest.textModel)
+        visionClient = ModelClient(if (latest.unifiedModel) latest.textModel else latest.visionModel)
+        Log.i(TAG, "配置已刷新: 文本=${latest.textModel.modelName} 视觉=${latest.effectiveVisionModel.modelName}")
+    }
+
+    /**
+     * 切换文本模型：索引必须写回配置，否则每次都从同一个旧索引算 next，永远只切到同一个备用模型
      */
     private fun switchTextModel() {
         synchronized(modelSwitchLock) {
-            val newConfig = config.modelGroup.switchToNextTextModel()
-            textClient.resetFailureCount()
-            textClient = ModelClient(newConfig.getCurrentTextModel())
-            if (config.unifiedModel) {
+            val updated = config.copy(modelGroup = config.modelGroup.switchToNextTextModel())
+            config = updated
+            repository.saveGlobalConfig(updated)
+            textClient = ModelClient(updated.modelGroup.getCurrentTextModel())
+            if (updated.unifiedModel) {
                 // 共用模式下视觉客户端即文本客户端
                 visionClient = textClient
             }
-            Log.i(TAG, "切换到文本模型: ${newConfig.getCurrentTextModel().modelName}")
+            Log.i(TAG, "切换到文本模型: ${updated.modelGroup.getCurrentTextModel().modelName}")
         }
     }
 
@@ -71,24 +85,16 @@ class TaskExecutor(
                 switchTextModel()
                 return
             }
-            val newConfig = config.modelGroup.switchToNextVisionModel()
-            visionClient.resetFailureCount()
-            visionClient = ModelClient(newConfig.getCurrentVisionModel())
-            Log.i(TAG, "切换到视觉模型: ${newConfig.getCurrentVisionModel().modelName}")
+            val updated = config.copy(modelGroup = config.modelGroup.switchToNextVisionModel())
+            config = updated
+            repository.saveGlobalConfig(updated)
+            visionClient = ModelClient(updated.modelGroup.getCurrentVisionModel())
+            Log.i(TAG, "切换到视觉模型: ${updated.modelGroup.getCurrentVisionModel().modelName}")
         }
     }
 
     /**
-     * 处理文本模型调用失败
-     */
-    private fun handleTextModelFailure() {
-        if (config.autoSwitchModel && textClient.recordFailure()) {
-            switchTextModel()
-        }
-    }
-
-    /**
-     * 处理视觉模型调用失败
+     * 视觉模型 API 调用失败：连续失败达到阈值才切换
      */
     private fun handleVisionModelFailure() {
         if (config.autoSwitchModel && visionClient.recordFailure()) {
@@ -96,21 +102,19 @@ class TaskExecutor(
         }
     }
 
-    /**
-     * 处理模型调用成功
-     */
-    private fun handleModelSuccess(isTextModel: Boolean) {
-        if (isTextModel) {
-            textClient.recordSuccess()
-        } else {
-            visionClient.recordSuccess()
-        }
+    private fun handleVisionModelSuccess() {
+        visionClient.recordSuccess()
     }
 
     // 执行状态回调
     var progressCallback: ((current: Int, total: Int, message: String) -> Unit)? = null
     var stepCallback: ((stepIndex: Int, step: TaskStep, success: Boolean, message: String) -> Unit)? = null
-    var debugCallback: ((stepIndex: Int, step: TaskStep, reason: String, screenshot: Bitmap?) -> DebugAction)? = null
+
+    /**
+     * 步骤失败时的调试回调：挂起等待用户在悬浮窗上操作。
+     * 未接线（null）时直接终止任务，保持旧行为
+     */
+    var debugCallback: (suspend (stepIndex: Int, step: TaskStep, reason: String, screenshot: Bitmap?) -> DebugAction)? = null
     var completionCallback: ((TaskResult) -> Unit)? = null
 
     // 悬浮窗回调
@@ -120,15 +124,18 @@ class TaskExecutor(
     var floatingWindowEnabled: Boolean = true
 
     // 调试动作
-    enum class DebugAction {
-        RETRY,           // 重试当前步骤
-        MODIFY_AND_RETRY,// 修改描述后重试
-        SKIP,            // 跳过当前步骤
-        MANUAL_CLICK,    // 手动点击（用户指定坐标）
-        ABORT            // 终止任务
+    sealed class DebugAction {
+        object Retry : DebugAction()                                  // 原样重试
+        data class ModifyAndRetry(val newHint: String) : DebugAction() // 修改描述后重试
+        object Skip : DebugAction()                                   // 跳过当前步骤
+        object ManualDone : DebugAction()                             // 用户已手动完成本步骤
+        object Abort : DebugAction()                                  // 终止任务
     }
 
+    @Volatile
     private var isExecuting = false
+
+    @Volatile
     private var shouldStop = false
 
     /**
@@ -142,6 +149,7 @@ class TaskExecutor(
 
         isExecuting = true
         shouldStop = false
+        refreshConfigIfChanged()
         Log.i(TAG, "===== 开始执行任务「${task.name}」（${task.steps.size} 步，包名=${task.packageName}）=====")
 
         val stepResults = mutableListOf<StepResult>()
@@ -200,13 +208,6 @@ class TaskExecutor(
                 val result = executeStep(task, step, index)
                 stepResults.add(result)
 
-                // 处理模型调用结果
-                if (result.success) {
-                    handleModelSuccess(isTextModel = true)
-                } else {
-                    handleTextModelFailure()
-                }
-
                 stepCallback?.invoke(index, step, result.success, result.message)
                 if (floatingWindowEnabled) {
                     val statusMsg = if (result.success) "完成：$stepDesc" else "失败：$stepDesc（${result.message}）"
@@ -214,13 +215,18 @@ class TaskExecutor(
                 }
 
                 if (!result.success && !step.optional) {
-                    // 非可选步骤失败，进入调试流程
+                    // 非可选步骤失败，进入调试流程（等待用户在悬浮窗上选择处理方式）
                     val screenshot = captureScreenshot()
-                    val action = debugCallback?.invoke(index, step, result.message, screenshot)
-                        ?: DebugAction.ABORT
+                    val action = try {
+                        withTimeoutOrNull(120_000) {
+                            debugCallback?.invoke(index, step, result.message, screenshot)
+                        } ?: DebugAction.Abort
+                    } finally {
+                        screenshot?.recycle()
+                    }
 
                     when (action) {
-                        DebugAction.RETRY -> {
+                        DebugAction.Retry -> {
                             val retryResult = executeStep(task, step, index)
                             stepResults[stepResults.size - 1] = retryResult
                             if (!retryResult.success && !step.optional) {
@@ -228,21 +234,23 @@ class TaskExecutor(
                                 return finish(TaskResult(task, false, stepResults, totalSteps, index, "步骤 ${index + 1} 重试失败"))
                             }
                         }
-                        DebugAction.MODIFY_AND_RETRY -> {
-                            val retryResult = executeStep(task, step, index)
+                        is DebugAction.ModifyAndRetry -> {
+                            val modified = step.copy(hint = action.newHint, targetText = action.newHint)
+                            Log.i(TAG, "步骤 ${index + 1} 修改描述后重试: \"${action.newHint}\"")
+                            val retryResult = executeStep(task, modified, index)
                             stepResults[stepResults.size - 1] = retryResult
                             if (!retryResult.success && !step.optional) {
                                 isExecuting = false
                                 return finish(TaskResult(task, false, stepResults, totalSteps, index, "步骤 ${index + 1} 修改后重试失败"))
                             }
                         }
-                        DebugAction.SKIP -> {
+                        DebugAction.Skip -> {
                             continue
                         }
-                        DebugAction.MANUAL_CLICK -> {
-                            continue
+                        DebugAction.ManualDone -> {
+                            stepResults[stepResults.size - 1] = StepResult(true, step, "用户手动完成")
                         }
-                        DebugAction.ABORT -> {
+                        DebugAction.Abort -> {
                             isExecuting = false
                             return finish(TaskResult(task, false, stepResults, totalSteps, index, "用户终止"))
                         }
@@ -253,13 +261,20 @@ class TaskExecutor(
                 delay(config.clickDelayMs)
             }
 
-            val success = stepResults.all { it.success || task.steps[stepResults.indexOf(it)].optional }
+            // 用下标关联原始步骤判断 optional，不能用 indexOf（内容相同的 StepResult 会取到错误下标）
+            val success = stepResults.withIndex().all { (i, r) ->
+                r.success || task.steps.getOrNull(i)?.optional == true
+            }
             progressCallback?.invoke(totalSteps, totalSteps, if (success) "任务完成" else "任务部分失败")
 
             isExecuting = false
             return finish(TaskResult(task, success, stepResults, totalSteps, currentStep + 1,
                 if (success) "全部步骤执行成功" else "部分步骤失败"))
 
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Activity 销毁/协程取消不是任务失败，向上传播让结构化并发正常收尾
+            isExecuting = false
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "任务执行异常: ${e.message}", e)
             isExecuting = false
@@ -325,31 +340,48 @@ class TaskExecutor(
         val start = System.currentTimeMillis()
         var lastSnapshot: Bitmap? = null
         var stableCount = 0
+        var screenshotFailures = 0
 
-        while (System.currentTimeMillis() - start < timeoutMs) {
-            if (isPageReady()) {
-                val snapshot = takeRawScreenshot()
-                if (snapshot != null) {
-                    if (lastSnapshot != null) {
-                        val diff = bitmapDiffRatio(lastSnapshot, snapshot)
-                        lastSnapshot.recycle()
-                        if (diff < 0.005) {
-                            stableCount++
-                            if (stableCount >= 2) {
-                                Log.i(TAG, "页面加载完成（节点就绪 + 页面静止，差异 $diff）")
-                                snapshot.recycle()
-                                return
-                            }
-                        } else {
-                            stableCount = 0
+        try {
+            // 冷启动白屏阶段截图没有意义，先给目标应用一点首帧时间
+            delay(500)
+            while (System.currentTimeMillis() - start < timeoutMs) {
+                if (isPageReady()) {
+                    val snapshot = takeRawScreenshot()
+                    if (snapshot == null) {
+                        screenshotFailures++
+                        // 截图不可用（未授权/服务未启动）时不要空等满超时，节点就绪即可继续
+                        if (screenshotFailures >= 3) {
+                            Log.w(TAG, "截图不可用，跳过页面静止检测，继续执行")
+                            return
                         }
+                    } else {
+                        screenshotFailures = 0
+                        if (lastSnapshot != null) {
+                            val previous = lastSnapshot
+                            val diff = withContext(Dispatchers.Default) { bitmapDiffRatio(previous, snapshot) }
+                            previous.recycle()
+                            lastSnapshot = null
+                            if (diff < 0.005) {
+                                stableCount++
+                                if (stableCount >= 2) {
+                                    Log.i(TAG, "页面加载完成（节点就绪 + 页面静止，差异 $diff）")
+                                    snapshot.recycle()
+                                    return
+                                }
+                            } else {
+                                stableCount = 0
+                            }
+                        }
+                        lastSnapshot = snapshot
                     }
-                    lastSnapshot = snapshot
                 }
+                delay(800)
             }
-            delay(800)
+            Log.w(TAG, "等待页面加载完成超时(${timeoutMs}ms)，继续执行")
+        } finally {
+            lastSnapshot?.recycle()
         }
-        Log.w(TAG, "等待页面加载完成超时(${timeoutMs}ms)，继续执行")
     }
 
     /**
@@ -527,15 +559,27 @@ class TaskExecutor(
         val screenshot = captureScreenshot()
             ?: return StepResult(false, step, "截图失败")
 
-        val screenshotPath = AutoTaskAccessibilityService.instance?.saveScreenshotToFile(screenshot, task.id, stepIndex) ?: ""
+        try {
+            if (step.repeat == "until_no_more") {
+                return clickMultipleByVision(task, step, stepIndex, screenshot)
+            }
 
-        if (step.repeat == "until_no_more") {
-            return clickMultipleByVision(task, step, stepIndex, screenshot)
-        }
+            val location = try {
+                visionClient.locateElement(step.hint, screenshot)
+            } catch (e: Exception) {
+                Log.e(TAG, "视觉模型调用失败: ${e.message}")
+                handleVisionModelFailure()
+                return StepResult(false, step, "视觉模型调用失败: ${e.message}")
+            }
 
-        val location = visionClient.locateElement(step.hint, screenshot)
+            if (!location.isValid()) {
+                // 只在失败时落盘截图，便于排查；成功路径不再每次写一张大图
+                val screenshotPath = AutoTaskAccessibilityService.instance
+                    ?.saveScreenshotToFile(screenshot, task.id, stepIndex) ?: ""
+                return StepResult(false, step, "视觉未找到: ${step.hint}", screenshotPath = screenshotPath)
+            }
 
-        return if (location.isValid()) {
+            handleVisionModelSuccess()
             // 视觉粗定位 + 无障碍精校准：
             // 视觉模型单点坐标误差较大，若视觉坐标落在真实可点击节点上，改用节点中心点击（更准）
             val calibrated = AutoTaskAccessibilityService.findClickableNear(location.x, location.y)
@@ -547,12 +591,12 @@ class TaskExecutor(
                     if (calibrated != null) " → 无障碍校准($clickX, $clickY)" else " → 无校准节点，用模型坐标"
             )
             dispatchGestureClick(clickX, clickY)
-            StepResult(
+            return StepResult(
                 true, step, "视觉点击成功: ($clickX, $clickY)",
-                Coordinates(clickX, clickY), screenshotPath
+                Coordinates(clickX, clickY)
             )
-        } else {
-            StepResult(false, step, "视觉未找到: ${step.hint}", screenshotPath = screenshotPath)
+        } finally {
+            if (!screenshot.isRecycled) screenshot.recycle()
         }
     }
 
@@ -572,28 +616,46 @@ class TaskExecutor(
      */
     private suspend fun clickMultipleByVision(task: AutomationTask, step: TaskStep, stepIndex: Int, initialScreenshot: Bitmap): StepResult {
         var screenshot = initialScreenshot
+        var ownsScreenshot = false
         var clickCount = 0
         val maxAttempts = 20
 
-        repeat(maxAttempts) {
-            val locations = visionClient.locateAllElements(step.hint, screenshot)
-            if (locations.isEmpty()) return@repeat
+        try {
+            repeat(maxAttempts) {
+                val locations = try {
+                    visionClient.locateAllElements(step.hint, screenshot)
+                } catch (e: Exception) {
+                    Log.e(TAG, "批量视觉定位失败: ${e.message}")
+                    handleVisionModelFailure()
+                    return@repeat
+                }
+                if (locations.isEmpty()) return@repeat
 
-            for (loc in locations) {
-                if (loc.isValid()) {
-                    dispatchGestureClick(loc.x.toFloat(), loc.y.toFloat())
-                    clickCount++
-                    delay(config.clickDelayMs)
+                for (loc in locations) {
+                    if (loc.isValid()) {
+                        dispatchGestureClick(loc.x.toFloat(), loc.y.toFloat())
+                        clickCount++
+                        delay(config.clickDelayMs)
+                    }
+                }
+
+                delay(500)
+                val newScreenshot = captureScreenshot()
+                if (newScreenshot != null) {
+                    val remaining = try {
+                        visionClient.locateAllElements(step.hint, newScreenshot)
+                    } catch (e: Exception) {
+                        handleVisionModelFailure()
+                        emptyList()
+                    }
+                    if (ownsScreenshot && !screenshot.isRecycled) screenshot.recycle()
+                    screenshot = newScreenshot
+                    ownsScreenshot = true
+                    if (remaining.isEmpty()) return@repeat
                 }
             }
-
-            delay(500)
-            val newScreenshot = captureScreenshot()
-            if (newScreenshot != null) {
-                val remaining = visionClient.locateAllElements(step.hint, newScreenshot)
-                if (remaining.isEmpty()) return@repeat
-                screenshot = newScreenshot
-            }
+        } finally {
+            if (ownsScreenshot && !screenshot.isRecycled) screenshot.recycle()
         }
 
         return if (clickCount > 0) {
@@ -640,8 +702,10 @@ class TaskExecutor(
         val centerY = displayMetrics.heightPixels / 2f
         val scrollDistance = displayMetrics.heightPixels * 0.5f
 
-        val startY = if (step.hint.contains("上")) centerY - scrollDistance / 2 else centerY + scrollDistance / 2
-        val endY = if (step.hint.contains("上")) centerY + scrollDistance / 2 else centerY - scrollDistance / 2
+        // AI 解析出的方向可能是 up/down，人工步骤可能是"向上/向下"
+        val up = step.hint.contains("上") || step.hint.trim().equals("up", ignoreCase = true)
+        val startY = if (up) centerY - scrollDistance / 2 else centerY + scrollDistance / 2
+        val endY = if (up) centerY + scrollDistance / 2 else centerY - scrollDistance / 2
 
         AutoTaskAccessibilityService.swipe(centerX, startY, centerX, endY, 300)
         return StepResult(true, step, "滚动完成")
@@ -654,8 +718,19 @@ class TaskExecutor(
         val screenshot = captureScreenshot()
             ?: return StepResult(false, step, "截图失败")
 
-        val verified = visionClient.verifyPage(step.hint, screenshot)
-        return StepResult(verified, step, if (verified) "验证通过" else "验证失败: ${step.hint}")
+        try {
+            val verified = try {
+                visionClient.verifyPage(step.hint, screenshot)
+            } catch (e: Exception) {
+                Log.e(TAG, "视觉验证调用失败: ${e.message}")
+                handleVisionModelFailure()
+                return StepResult(false, step, "视觉模型调用失败: ${e.message}")
+            }
+            handleVisionModelSuccess()
+            return StepResult(verified, step, if (verified) "验证通过" else "验证失败: ${step.hint}")
+        } finally {
+            if (!screenshot.isRecycled) screenshot.recycle()
+        }
     }
 
     /**

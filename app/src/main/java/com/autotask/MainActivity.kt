@@ -15,8 +15,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.autotask.config.AutomationTask
 import com.autotask.config.TaskRepository
+import com.autotask.config.TaskStep
 import com.autotask.databinding.ActivityMainBinding
 import com.autotask.service.AutoTaskAccessibilityService
+import com.autotask.service.DebugCallback
 import com.autotask.service.FloatingWindowService
 import com.autotask.service.ScreenshotService
 import com.autotask.service.TaskExecutor
@@ -26,6 +28,8 @@ import com.autotask.ui.TaskListManager
 import com.autotask.ui.ThemeManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 class MainActivity : AppCompatActivity() {
 
@@ -197,22 +201,82 @@ class MainActivity : AppCompatActivity() {
                 refreshTaskList()
             }
         }
-    }
 
-    // 上次请求权限的时间，防止重复请求
-    private var lastRequestTime = 0L
-
-    private fun checkPermissions() {
-        updatePermissionStatus()
-        // 首次启动或距离上次请求超过 5 秒时才重新检查
-        val now = System.currentTimeMillis()
-        if (lastRequestTime == 0L || now - lastRequestTime > 5000) {
-            lastRequestTime = now
-            requestAllPermissionsSequentially()
+        // 步骤失败时弹出调试悬浮窗，挂起等待用户选择重试/修改描述/跳过/手动完成
+        taskExecutor.debugCallback = { stepIndex, step, reason, _ ->
+            Log.i(TAG, "步骤 ${stepIndex + 1} 失败，等待用户调试: $reason")
+            awaitDebugAction(step, reason)
         }
     }
 
-    // 是否已请求过电池优化白名单
+    /**
+     * 显示调试悬浮窗并等待用户操作。悬浮窗不可用时直接终止，避免任务永久挂起
+     */
+    private suspend fun awaitDebugAction(step: TaskStep, reason: String): TaskExecutor.DebugAction {
+        if (!Settings.canDrawOverlays(this)) {
+            Log.w(TAG, "没有悬浮窗权限，无法进入调试模式")
+            return TaskExecutor.DebugAction.Abort
+        }
+        return suspendCancellableCoroutine { cont ->
+            var finished = false
+
+            fun finish(action: TaskExecutor.DebugAction) {
+                if (finished) return
+                finished = true
+                FloatingWindowService.debugCallback = null
+                if (cont.isActive) cont.resume(action)
+            }
+
+            FloatingWindowService.debugCallback = object : DebugCallback {
+                override fun onRetry() = finish(TaskExecutor.DebugAction.Retry)
+                override fun onModifyHint(newHint: String) =
+                    finish(TaskExecutor.DebugAction.ModifyAndRetry(newHint))
+                override fun onContinue() = finish(TaskExecutor.DebugAction.Skip)
+                override fun onManualSpecify() = finish(TaskExecutor.DebugAction.ManualDone)
+                override fun onAbort() = finish(TaskExecutor.DebugAction.Abort)
+            }
+
+            try {
+                startService(Intent(this, FloatingWindowService::class.java).apply {
+                    putExtra("action", "show_debug")
+                    putExtra("hint", step.hint.ifEmpty { step.targetText })
+                    putExtra("reason", reason)
+                })
+            } catch (e: Exception) {
+                Log.e(TAG, "显示调试悬浮窗失败: ${e.message}")
+                finish(TaskExecutor.DebugAction.Abort)
+            }
+
+            cont.invokeOnCancellation { FloatingWindowService.debugCallback = null }
+        }
+    }
+
+    private fun checkPermissions() {
+        updatePermissionStatus()
+        val prefs = getSharedPreferences("auto_task", MODE_PRIVATE)
+        if (!prefs.getBoolean("initial_permission_setup_done", false)) {
+            prefs.edit().putBoolean("initial_permission_setup_done", true).apply()
+            requestAllPermissionsSequentially()
+            return
+        }
+        // 后续启动不再逐个弹窗；只有无障碍丢失（任务无法执行）才强制提醒
+        if (!AutoTaskAccessibilityService.isAccessibilityServiceEnabled(this)) {
+            showPermissionRationaleDialog(
+                "无障碍服务",
+                "无障碍服务未开启，自动化任务无法执行。请在设置中开启「AutoTask」。",
+                { openAccessibilitySettings() }
+            )
+        } else if (!isIgnoringBatteryOptimizations() && !prefs.getBoolean("battery_whitelist_asked", false)) {
+            prefs.edit().putBoolean("battery_whitelist_asked", true).apply()
+            showPermissionRationaleDialog(
+                "后台运行权限",
+                "为了确保自动化任务在后台稳定运行，请允许本应用「不受电池优化」。",
+                { requestIgnoreBatteryOptimizations() }
+            )
+        }
+    }
+
+    // 是否已请求过电池优化白名单（首次引导流程内使用）
     private var hasAskedBatteryOptimization = false
 
     /**
@@ -259,6 +323,37 @@ class MainActivity : AppCompatActivity() {
                 requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATION)
             }
         }
+
+        // 5. 截屏授权（Android 11 以下没有无障碍截图 API，视觉兜底依赖 MediaProjection）
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R && !ScreenshotService.hasPermission() && !hasAskedScreenCapture) {
+            hasAskedScreenCapture = true
+            showPermissionRationaleDialog(
+                "截屏权限",
+                "视觉识别需要截取屏幕内容来定位界面元素。请在下个系统弹窗中点击「允许」。\n\n" +
+                        "不授权时仍可使用纯无障碍模式，但视觉兜底不可用。",
+                { ScreenshotService.requestPermission(this) }
+            )
+        }
+    }
+
+    private var hasAskedScreenCapture = false
+
+    /**
+     * 执行前确保截图能力可用（API<30 需要 MediaProjection 授权）。
+     * 不阻塞任务：纯无障碍步骤可能仍然成功，只是失去视觉兜底
+     */
+    private fun ensureVisionScreenshotPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) return
+        if (ScreenshotService.hasPermission()) return
+        if (repository.getGlobalConfig().strategy == "accessibility") return
+
+        if (hasAskedScreenCapture) {
+            Toast.makeText(this, "视觉识别不可用：可在「权限管理」中重新授予截屏权限", Toast.LENGTH_SHORT).show()
+            return
+        }
+        hasAskedScreenCapture = true
+        Toast.makeText(this, "视觉识别不可用：请授予截屏权限（仅影响视觉兜底）", Toast.LENGTH_LONG).show()
+        ScreenshotService.requestPermission(this)
     }
 
     private fun isIgnoringBatteryOptimizations(): Boolean {
@@ -375,7 +470,15 @@ class MainActivity : AppCompatActivity() {
                     requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATION)
                 }
             }
-        )
+        ) + if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            listOf(
+                PermItem("截屏权限", ScreenshotService.hasPermission(), false, "视觉识别时截取屏幕") {
+                    ScreenshotService.requestPermission(this)
+                }
+            )
+        } else {
+            emptyList()
+        }
 
         // 构建自定义布局
         val container = android.widget.LinearLayout(ctx).apply {
@@ -509,6 +612,7 @@ class MainActivity : AppCompatActivity() {
             openAccessibilitySettings()
             return
         }
+        ensureVisionScreenshotPermission()
 
         Toast.makeText(this, "开始执行: ${task.name}", Toast.LENGTH_SHORT).show()
 
@@ -532,35 +636,42 @@ class MainActivity : AppCompatActivity() {
             openAccessibilitySettings()
             return
         }
+        ensureVisionScreenshotPermission()
 
+        binding.btnStartAll.isEnabled = false
         lifecycleScope.launch {
-            val tasks = repository.getEnabledTasks()
-            if (tasks.isEmpty()) {
-                Toast.makeText(this@MainActivity, "没有启用的任务", Toast.LENGTH_SHORT).show()
-                return@launch
-            }
-
-            Log.i(TAG, "一键执行开始：共 ${tasks.size} 个任务")
-            var successCount = 0
-            var failCount = 0
-            val waitBetween = repository.getGlobalConfig().waitBetweenTasksMs
-            for ((index, task) in tasks.withIndex()) {
-                Log.i(TAG, ">>> 第 ${index + 1}/${tasks.size} 个任务: ${task.name} (enabled=${task.enabled})")
-                val result = taskExecutor.executeTask(task)
-                Log.i(TAG, "<<< 第 ${index + 1}/${tasks.size} 个任务结束: ${task.name} - success=${result.success} msg=${result.message}")
-                repository.updateTaskResult(task.id, result.success)
-                if (result.success) successCount++ else failCount++
-                // 任务之间留间隔：上一个任务最后一步操作（如签到）的动画/网络请求可能还在进行，
-                // 等它完成再切下一个应用，避免"刚点了签到就被切走"
-                if (index < tasks.size - 1) {
-                    Log.i(TAG, "任务间隔等待 ${waitBetween}ms 后继续下一个任务")
-                    delay(waitBetween)
+            try {
+                val tasks = repository.getEnabledTasks()
+                if (tasks.isEmpty()) {
+                    Toast.makeText(this@MainActivity, "没有启用的任务", Toast.LENGTH_SHORT).show()
+                    return@launch
                 }
-            }
 
-            Log.i(TAG, "一键执行完成：$successCount 成功, $failCount 失败")
-            Toast.makeText(this@MainActivity, "执行完成: $successCount 成功, $failCount 失败", Toast.LENGTH_LONG).show()
-            refreshTaskList()
+                Log.i(TAG, "一键执行开始：共 ${tasks.size} 个任务")
+                var successCount = 0
+                var failCount = 0
+                val waitBetween = repository.getGlobalConfig().waitBetweenTasksMs
+                for ((index, task) in tasks.withIndex()) {
+                    Log.i(TAG, ">>> 第 ${index + 1}/${tasks.size} 个任务: ${task.name} (enabled=${task.enabled})")
+                    val result = taskExecutor.executeTask(task)
+                    Log.i(TAG, "<<< 第 ${index + 1}/${tasks.size} 个任务结束: ${task.name} - success=${result.success} msg=${result.message}")
+                    repository.updateTaskResult(task.id, result.success)
+                    if (result.success) successCount++ else failCount++
+                    // 任务之间留间隔：上一个任务最后一步操作（如签到）的动画/网络请求可能还在进行，
+                    // 等它完成再切下一个应用，避免"刚点了签到就被切走"
+                    if (index < tasks.size - 1) {
+                        Log.i(TAG, "任务间隔等待 ${waitBetween}ms 后继续下一个任务")
+                        delay(waitBetween)
+                    }
+                }
+
+                Log.i(TAG, "一键执行完成：$successCount 成功, $failCount 失败")
+                Toast.makeText(this@MainActivity, "执行完成: $successCount 成功, $failCount 失败", Toast.LENGTH_LONG).show()
+            } finally {
+                binding.btnStartAll.isEnabled = true
+                binding.btnStartAll.text = "一键执行"
+                refreshTaskList()
+            }
         }
     }
 
@@ -600,8 +711,10 @@ class MainActivity : AppCompatActivity() {
                 requestAllPermissionsSequentially()
             }
             REQUEST_SCREENSHOT -> {
-                if (ScreenshotService.handlePermissionResult(requestCode, resultCode, data)) {
+                if (ScreenshotService.handlePermissionResult(this, requestCode, resultCode, data)) {
                     Toast.makeText(this, "截屏权限已获取", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "未授予截屏权限，视觉识别将不可用", Toast.LENGTH_LONG).show()
                 }
             }
         }

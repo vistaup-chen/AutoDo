@@ -92,6 +92,9 @@ class AutoTaskAccessibilityService : AccessibilityService() {
             }
         }
 
+        // 搜索词的通用后缀（"我的按钮" → "我的"），避免每次查找都重新编译正则
+        private val SUFFIX_REGEX = Regex("(按钮|图标|输入框|输入|链接|选项|文字|区域|入口|标签|卡片|菜单|列表|标题|Tab|tab|页签)$")
+
         fun click(x: Float, y: Float, callback: ((Boolean) -> Unit)? = null) {
             instance?.dispatchClick(x, y, callback)
         }
@@ -148,10 +151,13 @@ class AutoTaskAccessibilityService : AccessibilityService() {
         }
     }
 
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    // onUnbind 会 cancel，重连必须重建：否则服务显示已开启但协程全部静默失效
+    private var serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        serviceScope.cancel()
+        serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         instance = this
         startForegroundNotification()
         Log.i(TAG, "无障碍服务已连接")
@@ -261,6 +267,8 @@ class AutoTaskAccessibilityService : AccessibilityService() {
             val child = node.getChild(i) ?: continue
             val result = findClickableNearRecursive(child, x, y)
             if (result != null) {
+                // 返回的是坐标不是节点引用，当前 child 必须回收，否则每次视觉校准都泄漏节点
+                child.recycle()
                 return result
             }
             child.recycle()
@@ -322,10 +330,7 @@ class AutoTaskAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return null
 
         // 搜索词候选：原文 + 去掉通用后缀词的版本
-        val stripped = text.replace(
-            Regex("(按钮|图标|输入框|输入|链接|选项|文字|区域|入口|标签|卡片|菜单|列表|标题|Tab|tab|页签)$"),
-            ""
-        ).trim()
+        val stripped = text.replace(SUFFIX_REGEX, "").trim()
         val terms = if (stripped.isNotEmpty() && stripped != text) listOf(text, stripped) else listOf(text)
 
         for (term in terms) {
@@ -433,10 +438,7 @@ class AutoTaskAccessibilityService : AccessibilityService() {
         // 搜索词包含节点文本（防误伤：节点文本至少 2 个字符）
         if (s.contains(n, ignoreCase = true) && n.length >= 2) return true
         // 去掉搜索词的通用后缀再匹配
-        val stripped = s.replace(
-            Regex("(按钮|图标|输入框|输入|链接|选项|文字|区域|入口|标签|卡片|菜单|列表|标题|Tab|tab|页签)$"),
-            ""
-        ).trim()
+        val stripped = s.replace(SUFFIX_REGEX, "").trim()
         if (stripped.length >= 2) {
             if (n.contains(stripped, ignoreCase = true)) return true
             if (stripped.contains(n, ignoreCase = true)) return true

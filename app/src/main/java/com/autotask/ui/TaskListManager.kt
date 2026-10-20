@@ -7,6 +7,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import com.autotask.R
 import com.autotask.config.AutomationTask
@@ -381,7 +382,7 @@ class TaskListManager(
                 hint = step.hint,
                 duration = step.duration,
                 inputText = step.inputText,
-                scrollDirection = step.hint
+                scrollDirection = normalizeScrollDirection(step.hint)
             )
         }
         Log.d(TAG, "转换后: ${steps.size} 步")
@@ -437,7 +438,7 @@ class TaskListManager(
                 hint = step.hint,
                 duration = step.duration,
                 inputText = step.inputText,
-                scrollDirection = step.hint
+                scrollDirection = normalizeScrollDirection(step.hint)
             )
         }
         currentParsedSteps = steps
@@ -513,7 +514,7 @@ class TaskListManager(
                 hint = step.hint,
                 duration = step.duration,
                 inputText = step.inputText,
-                scrollDirection = step.hint
+                scrollDirection = normalizeScrollDirection(step.hint)
             )
         }.toMutableList()
 
@@ -998,7 +999,9 @@ class TaskListManager(
             loadingDialog.setMessage("正在调用 AI 将描述转换为操作步骤...\n\n$msg")
         }
 
-        val scope = CoroutineScope(Dispatchers.Main)
+        // 绑定 Activity 生命周期：解析期间退出页面时自动取消，避免对已销毁的窗口弹对话框
+        val scope = (context as? androidx.lifecycle.LifecycleOwner)?.lifecycleScope
+            ?: CoroutineScope(Dispatchers.Main)
         scope.launch {
             try {
                 val steps = textClient.parseTextToSteps(description, packageName)
@@ -1054,6 +1057,13 @@ class TaskListManager(
                 Toast.makeText(context, "解析失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    /** AI 输出 up/down，编辑界面的下拉框用中文显示 */
+    private fun normalizeScrollDirection(raw: String): String = when (raw.trim().lowercase()) {
+        "up" -> "向上"
+        "down" -> "向下"
+        else -> raw
     }
 
     /**

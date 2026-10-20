@@ -23,18 +23,22 @@ class ModelClient(private val config: ModelConfig) {
 
     companion object {
         private const val TAG = "AT-ModelClient"
+        // 视觉请求的长边上限：1080x2160 缩到 720x1440 后上传体积约为原来的 1/3，坐标按比例映射回原图
+        private const val VISION_MAX_SIDE = 1440
+
+        // 所有客户端共享连接池，避免每次切换模型都新建 OkHttpClient 导致连接无法复用
+        private val sharedClient: OkHttpClient by lazy {
+            OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(15, TimeUnit.SECONDS)
+                .build()
+        }
+        private val gson = Gson()
     }
 
     // 状态回调（429 限流重试/超时等），用于 UI 展示详细进度
     var statusListener: ((String) -> Unit)? = null
-
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
-        .build()
-
-    private val gson = Gson()
 
     // 失败计数，用于判断是否需要切换模型
     private var failureCount = 0
@@ -118,6 +122,15 @@ class ModelClient(private val config: ModelConfig) {
         prompt: String,
         bitmap: Bitmap
     ): String = withContext(Dispatchers.IO) {
+        val scaled = scaleForVision(bitmap)
+        try {
+            askVisionInternal(prompt, scaled.bitmap)
+        } finally {
+            if (scaled.owned) scaled.bitmap.recycle()
+        }
+    }
+
+    private fun askVisionInternal(prompt: String, bitmap: Bitmap): String {
         val base64Image = bitmapToBase64(bitmap)
 
         val userContent = JsonArray().apply {
@@ -128,7 +141,7 @@ class ModelClient(private val config: ModelConfig) {
             add(JsonObject().apply {
                 addProperty("type", "image_url")
                 add("image_url", JsonObject().apply {
-                    addProperty("url", "data:image/png;base64,$base64Image")
+                    addProperty("url", "data:image/jpeg;base64,$base64Image")
                 })
             })
         }
@@ -143,12 +156,12 @@ class ModelClient(private val config: ModelConfig) {
         val body = JsonObject().apply {
             addProperty("model", config.modelName)
             add("messages", messages)
-            addProperty("max_tokens", 4096)
+            addProperty("max_tokens", 1024)
             addProperty("temperature", config.temperature)
         }
 
         val response = callApi("/chat/completions", body.toString())
-        parseTextResponse(response)
+        return parseTextResponse(response)
     }
 
     /**
@@ -159,32 +172,48 @@ class ModelClient(private val config: ModelConfig) {
         description: String,
         bitmap: Bitmap
     ): ElementLocation = withContext(Dispatchers.IO) {
-        // 必须用截图的实际像素尺寸，不能用 Resources.getSystem()：
-        // 截图是全屏（含状态栏/导航栏），尺寸与窗口可见区域不一致会导致坐标偏移
-        val screenWidth = bitmap.width
-        val screenHeight = bitmap.height
+        val scaled = scaleForVision(bitmap)
+        try {
+            // 提示分辨率必须用实际发送的图片尺寸；返回坐标再按缩放比例映射回原始截图
+            val analysisWidth = scaled.bitmap.width
+            val analysisHeight = scaled.bitmap.height
 
-        val prompt = """
-            分析这张安卓屏幕截图，精确定位"$description"的位置。
+            val prompt = """
+                分析这张安卓屏幕截图，精确定位"$description"的位置。
 
-            屏幕分辨率: ${screenWidth}x${screenHeight}
+                屏幕分辨率: ${analysisWidth}x${analysisHeight}
 
-            返回JSON: {"x1": 元素左上角x, "y1": 元素左上角y, "x2": 元素右下角x, "y2": 元素右下角y, "confidence": 0.0-1.0}
+                返回JSON: {"x1": 元素左上角x, "y1": 元素左上角y, "x2": 元素右下角x, "y2": 元素右下角y, "confidence": 0.0-1.0}
 
-            规则：
-            - 坐标原点在左上角（图片最左上角），x范围0-$screenWidth，y范围0-$screenHeight
-            - x1/y1/x2/y2 必须框住整个目标元素的完整矩形（不要只框文字，要框住整个可点击区域）
-            - 坐标必须与图片像素一一对应，不要做任何缩放或换算
-            - confidence表示确定程度，不确定时降低confidence
-            - 找不到返回 {"x1": -1, "y1": -1, "x2": -1, "y2": -1, "confidence": 0}
-            - 只返回JSON，不要其他文字
-        """.trimIndent()
+                规则：
+                - 坐标原点在左上角（图片最左上角），x范围0-$analysisWidth，y范围0-$analysisHeight
+                - x1/y1/x2/y2 必须框住整个目标元素的完整矩形（不要只框文字，要框住整个可点击区域）
+                - 坐标必须与图片像素一一对应，不要做任何缩放或换算
+                - confidence表示确定程度，不确定时降低confidence
+                - 找不到返回 {"x1": -1, "y1": -1, "x2": -1, "y2": -1, "confidence": 0}
+                - 只返回JSON，不要其他文字
+            """.trimIndent()
 
-        val result = askVision(prompt, bitmap)
-        Log.d(TAG, "视觉定位原始返回: ${result.take(800)}")
-        val loc = parseLocationResponse(result, screenWidth, screenHeight)
-        Log.d(TAG, "视觉定位结果: \"$description\" → 中心(${loc.x}, ${loc.y}) 截图=${screenWidth}x${screenHeight}")
-        loc
+            val result = askVisionInternal(prompt, scaled.bitmap)
+            Log.d(TAG, "视觉定位原始返回: ${result.take(800)}")
+            val loc = parseLocationResponse(result, analysisWidth, analysisHeight)
+            val mapped = if (loc.isValid() && scaled.scale != 1f) {
+                ElementLocation(
+                    (loc.x / scaled.scale).toInt().coerceIn(0, bitmap.width),
+                    (loc.y / scaled.scale).toInt().coerceIn(0, bitmap.height)
+                )
+            } else {
+                loc
+            }
+            Log.d(
+                TAG,
+                "视觉定位结果: \"$description\" → 中心(${mapped.x}, ${mapped.y}) " +
+                    "分析图=${analysisWidth}x$analysisHeight 原图=${bitmap.width}x${bitmap.height}"
+            )
+            mapped
+        } finally {
+            if (scaled.owned) scaled.bitmap.recycle()
+        }
     }
 
     /**
@@ -194,30 +223,43 @@ class ModelClient(private val config: ModelConfig) {
         description: String,
         bitmap: Bitmap
     ): List<ElementLocation> = withContext(Dispatchers.IO) {
-        // 同样以截图实际像素尺寸为准
-        val screenWidth = bitmap.width
-        val screenHeight = bitmap.height
+        val scaled = scaleForVision(bitmap)
+        try {
+            val analysisWidth = scaled.bitmap.width
+            val analysisHeight = scaled.bitmap.height
 
-        val prompt = """
-            分析这张安卓屏幕截图，找到所有"$description"的位置。
+            val prompt = """
+                分析这张安卓屏幕截图，找到所有"$description"的位置。
 
-            屏幕分辨率: ${screenWidth}x${screenHeight}
+                屏幕分辨率: ${analysisWidth}x${analysisHeight}
 
-            返回JSON数组: [{"x1": 左上角x, "y1": 左上角y, "x2": 右下角x, "y2": 右下角y, "confidence": 0.0-1.0}, ...]
+                返回JSON数组: [{"x1": 左上角x, "y1": 左上角y, "x2": 右下角x, "y2": 右下角y, "confidence": 0.0-1.0}, ...]
 
-            规则：
-            - 坐标原点在左上角（图片最左上角），坐标必须与图片像素一一对应，不要缩放或换算
-            - x1/y1/x2/y2 必须框住每个目标元素的完整矩形
-            - 每个元素都要有confidence
-            - 找不到返回 []
-            - 只返回JSON
-        """.trimIndent()
+                规则：
+                - 坐标原点在左上角（图片最左上角），坐标必须与图片像素一一对应，不要缩放或换算
+                - x1/y1/x2/y2 必须框住每个目标元素的完整矩形
+                - 每个元素都要有confidence
+                - 找不到返回 []
+                - 只返回JSON
+            """.trimIndent()
 
-        val result = askVision(prompt, bitmap)
-        Log.d(TAG, "批量视觉定位原始返回: ${result.take(800)}")
-        val locs = parseLocationArrayResponse(result, screenWidth, screenHeight)
-        Log.d(TAG, "批量视觉定位结果: \"$description\" → ${locs.size} 个")
-        locs
+            val result = askVisionInternal(prompt, scaled.bitmap)
+            Log.d(TAG, "批量视觉定位原始返回: ${result.take(800)}")
+            val locs = parseLocationArrayResponse(result, analysisWidth, analysisHeight).map { loc ->
+                if (scaled.scale != 1f) {
+                    ElementLocation(
+                        (loc.x / scaled.scale).toInt().coerceIn(0, bitmap.width),
+                        (loc.y / scaled.scale).toInt().coerceIn(0, bitmap.height)
+                    )
+                } else {
+                    loc
+                }
+            }
+            Log.d(TAG, "批量视觉定位结果: \"$description\" → ${locs.size} 个")
+            locs
+        } finally {
+            if (scaled.owned) scaled.bitmap.recycle()
+        }
     }
 
     /**
@@ -387,7 +429,7 @@ class ModelClient(private val config: ModelConfig) {
 
         while (retryCount <= maxRetries) {
             val response = try {
-                client.newCall(request).execute()
+                sharedClient.newCall(request).execute()
             } catch (e: java.net.SocketTimeoutException) {
                 // 请求/响应超时（模型服务慢或排队）
                 statusListener?.invoke("请求超时，重试中(${retryCount + 1}/$maxRetries)...")
@@ -573,7 +615,10 @@ class ModelClient(private val config: ModelConfig) {
                     hint = obj.get("hint")?.asString ?: "",
                     duration = obj.get("duration")?.asLong ?: 3,
                     inputText = obj.get("input_text")?.asString ?: obj.get("hint")?.asString ?: "",
-                    scrollDirection = obj.get("scroll_direction")?.asString ?: "down"
+                    // 提示词约定输出 direction，兼容历史字段 scroll_direction
+                    scrollDirection = obj.get("direction")?.asString
+                        ?: obj.get("scroll_direction")?.asString
+                        ?: "down"
                 )
                 Log.d(TAG, "步骤: action=${step.action}, hint=${step.hint}, duration=${step.duration}")
                 step
@@ -615,9 +660,25 @@ class ModelClient(private val config: ModelConfig) {
         }
     }
 
+    private data class ScaledImage(val bitmap: Bitmap, val scale: Float, val owned: Boolean)
+
+    /**
+     * 视觉请求前缩放：长边超过 [VISION_MAX_SIDE] 时等比缩小，返回缩放比例用于坐标还原。
+     * 缩小后再编码，上传体积和模型处理时间都显著下降
+     */
+    private fun scaleForVision(source: Bitmap): ScaledImage {
+        val longSide = maxOf(source.width, source.height)
+        if (longSide <= VISION_MAX_SIDE) return ScaledImage(source, 1f, false)
+        val scale = VISION_MAX_SIDE.toFloat() / longSide
+        val width = (source.width * scale).toInt().coerceAtLeast(1)
+        val height = (source.height * scale).toInt().coerceAtLeast(1)
+        return ScaledImage(Bitmap.createScaledBitmap(source, width, height, true), scale, true)
+    }
+
     private fun bitmapToBase64(bitmap: Bitmap): String {
         val outputStream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.PNG, 90, outputStream)
+        // 截图无透明通道，JPEG 90 比 PNG 小一个数量级，文字仍足够清晰
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
         val bytes = outputStream.toByteArray()
         return android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
     }

@@ -2,6 +2,7 @@ package com.autotask.config
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -18,9 +19,10 @@ class TaskRepository(context: Context) {
     private val screenshotsDir = File(context.filesDir, "screenshots").apply { mkdirs() }
 
     companion object {
-        private const val KEY_TASK_IDS = "task_ids"
+        private const val TAG = "AT-TaskRepository"
         private const val KEY_GLOBAL_CONFIG = "global_config"
         private const val KEY_TASKS_DATA = "tasks_data"
+        private const val KEY_TASKS_DATA_BROKEN = "tasks_data_broken"
     }
 
     /**
@@ -40,6 +42,9 @@ class TaskRepository(context: Context) {
             try {
                 ConfigManager.jsonToTasks(json)
             } catch (e: Exception) {
+                // 不能静默丢任务：保留一份原始数据供排查/恢复，再返回空列表
+                Log.e(TAG, "任务数据解析失败，已备份原始 JSON", e)
+                prefs.edit().putString(KEY_TASKS_DATA_BROKEN, json).apply()
                 emptyList()
             }
         } else {
@@ -140,13 +145,5 @@ class TaskRepository(context: Context) {
         } else {
             GlobalConfig()
         }
-    }
-
-    private fun getTaskIds(): Set<String> {
-        return prefs.getStringSet(KEY_TASK_IDS, emptySet()) ?: emptySet()
-    }
-
-    private fun saveTaskIds(ids: Set<String>) {
-        prefs.edit().putStringSet(KEY_TASK_IDS, ids).apply()
     }
 }

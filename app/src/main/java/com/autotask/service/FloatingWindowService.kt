@@ -42,13 +42,15 @@ interface DebugCallback {
     fun onManualSpecify()
     fun onModifyHint(newHint: String)
     fun onContinue()
+    fun onAbort()
 }
 
 class FloatingWindowService : Service() {
 
     companion object {
         private const val TAG = "AT-FloatingWindow"
-        private const val NOTIFICATION_ID = 1001
+        // 通知 ID 不能和无障碍服务（1001）重复，否则两个常驻通知会互相覆盖
+        private const val NOTIFICATION_ID = 1002
         private const val CHANNEL_ID = "floating_window_channel"
 
         const val MODE_HIDDEN = 0
@@ -142,6 +144,8 @@ class FloatingWindowService : Service() {
 
     override fun onDestroy() {
         hideFloatingWindow()
+        teachCallback = null
+        debugCallback = null
         super.onDestroy()
     }
 
@@ -243,6 +247,7 @@ class FloatingWindowService : Service() {
             val btnRetry = view.findViewById<Button>(R.id.btn_retry)
             val btnManual = view.findViewById<Button>(R.id.btn_manual)
             val btnContinue = view.findViewById<Button>(R.id.btn_continue)
+            val btnAbort = view.findViewById<Button>(R.id.btn_abort)
 
             tvReason.text = "找不到元素: $hint\n原因: $reason"
             etHint.setText(hint)
@@ -267,6 +272,11 @@ class FloatingWindowService : Service() {
             btnContinue.setOnClickListener {
                 hideFloatingWindow()
                 debugCallback?.onContinue()
+            }
+
+            btnAbort.setOnClickListener {
+                hideFloatingWindow()
+                debugCallback?.onAbort()
             }
         }
     }
