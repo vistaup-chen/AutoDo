@@ -66,15 +66,25 @@ class TaskExecutor(
      */
     private fun switchTextModel() {
         synchronized(modelSwitchLock) {
-            val updated = config.copy(modelGroup = config.modelGroup.switchToNextTextModel())
-            config = updated
-            repository.saveGlobalConfig(updated)
-            textClient = ModelClient(updated.modelGroup.getCurrentTextModel())
-            if (updated.unifiedModel) {
-                // 共用模式下视觉客户端即文本客户端
-                visionClient = textClient
+            var group = config.modelGroup
+            // 跳过用户列表里地址/模型名为空的占位项，避免切到不可用模型
+            for (i in group.textModels.indices) {
+                group = group.switchToNextTextModel()
+                val candidate = group.getCurrentTextModel()
+                if (candidate.apiBase.isNotBlank() && candidate.modelName.isNotBlank()) {
+                    val updated = config.copy(modelGroup = group)
+                    config = updated
+                    repository.saveGlobalConfig(updated)
+                    textClient = ModelClient(candidate)
+                    if (updated.unifiedModel) {
+                        // 共用模式下视觉客户端即文本客户端
+                        visionClient = textClient
+                    }
+                    Log.i(TAG, "切换到文本模型: ${candidate.modelName}")
+                    return
+                }
             }
-            Log.i(TAG, "切换到文本模型: ${updated.modelGroup.getCurrentTextModel().modelName}")
+            Log.w(TAG, "没有可用的备用文本模型（地址或模型名为空）")
         }
     }
 
@@ -88,11 +98,20 @@ class TaskExecutor(
                 switchTextModel()
                 return
             }
-            val updated = config.copy(modelGroup = config.modelGroup.switchToNextVisionModel())
-            config = updated
-            repository.saveGlobalConfig(updated)
-            visionClient = ModelClient(updated.modelGroup.getCurrentVisionModel())
-            Log.i(TAG, "切换到视觉模型: ${updated.modelGroup.getCurrentVisionModel().modelName}")
+            var group = config.modelGroup
+            for (i in group.visionModels.indices) {
+                group = group.switchToNextVisionModel()
+                val candidate = group.getCurrentVisionModel()
+                if (candidate.apiBase.isNotBlank() && candidate.modelName.isNotBlank()) {
+                    val updated = config.copy(modelGroup = group)
+                    config = updated
+                    repository.saveGlobalConfig(updated)
+                    visionClient = ModelClient(candidate)
+                    Log.i(TAG, "切换到视觉模型: ${candidate.modelName}")
+                    return
+                }
+            }
+            Log.w(TAG, "没有可用的备用视觉模型（地址或模型名为空）")
         }
     }
 
@@ -648,8 +667,25 @@ class TaskExecutor(
             // 视觉粗定位 + 无障碍精校准：
             // 视觉模型单点坐标误差较大，若视觉坐标落在真实可点击节点上，改用节点中心点击（更准）
             val calibrated = AutoTaskAccessibilityService.findClickableNear(location.x, location.y)
-            val clickX = calibrated?.first ?: location.x.toFloat()
-            val clickY = calibrated?.second ?: location.y.toFloat()
+
+            // 防误点：目标明确是数字/符号按钮时，校准节点的文本必须与目标一致，
+            // 否则宁可失败也不要点到相邻按钮（GLM-4V 实测会把"1"定位到"6"）
+            if (calibrated != null && isNumericOrSymbolTarget(step)) {
+                val expected = com.autotask.util.SearchTerms.build(step.targetText.ifEmpty { step.hint })
+                val label = calibrated.label
+                val matched = label.isEmpty() || expected.any {
+                    it.equals(label, ignoreCase = true) ||
+                        label.contains(it, ignoreCase = true) ||
+                        it.contains(label, ignoreCase = true)
+                }
+                if (!matched) {
+                    Log.w(TAG, "视觉定位疑似错误: 坐标(${location.x}, ${location.y})落在「$label」上，目标「${step.hint}」")
+                    return StepResult(false, step, "视觉定位疑似错误: 落在「$label」上")
+                }
+            }
+
+            val clickX = calibrated?.x ?: location.x.toFloat()
+            val clickY = calibrated?.y ?: location.y.toFloat()
             Log.i(
                 TAG,
                 "视觉点击: 模型(${location.x}, ${location.y})" +
@@ -869,6 +905,14 @@ class TaskExecutor(
         }
 
         return bmp
+    }
+
+    /**
+     * 目标是否是明确的数字/符号按钮（这类误点后果最直接，需要文本校验）
+     */
+    private fun isNumericOrSymbolTarget(step: TaskStep): Boolean {
+        val text = step.targetText.ifEmpty { step.hint }
+        return Regex("[0-9０-９+\\-=×÷*/.]|加号|减号|乘号|除号|等号|小数点|数字").containsMatchIn(text)
     }
 
     private suspend fun dispatchGestureClick(x: Float, y: Float) {

@@ -102,11 +102,13 @@ class AutoTaskAccessibilityService : AccessibilityService() {
             return instance?.findNodeByTextInternal(text)
         }
 
+        data class ClickableNear(val x: Float, val y: Float, val label: String)
+
         /**
          * 在指定坐标附近查找真实的可点击节点（视觉粗定位后的精校准）
-         * 返回节点中心坐标；找不到返回 null（调用方回退用视觉坐标）
+         * 返回节点中心坐标和节点文本；找不到返回 null（调用方回退用视觉坐标）
          */
-        fun findClickableNear(x: Int, y: Int): Pair<Float, Float>? {
+        fun findClickableNear(x: Int, y: Int): ClickableNear? {
             return instance?.findClickableNearInternal(x, y)
         }
 
@@ -244,21 +246,23 @@ class AutoTaskAccessibilityService : AccessibilityService() {
      * 在坐标附近找真实可点击节点：视觉模型定位误差较大时，
      * 用无障碍节点树把点击点校准到真实按钮的中心
      */
-    private fun findClickableNearInternal(x: Int, y: Int): Pair<Float, Float>? {
+    private fun findClickableNearInternal(x: Int, y: Int): ClickableNear? {
         val root = rootInActiveWindow ?: return null
         val result = findClickableNearRecursive(root, x, y)
         root.recycle()
         return result
     }
 
-    private fun findClickableNearRecursive(node: AccessibilityNodeInfo, x: Int, y: Int): Pair<Float, Float>? {
+    private fun findClickableNearRecursive(node: AccessibilityNodeInfo, x: Int, y: Int): ClickableNear? {
         // 坐标落在节点范围内，且节点可点击（或可点击的容器）
         if (node.isClickable) {
             val rect = Rect()
             node.getBoundsInScreen(rect)
             if (rect.contains(x, y)) {
-                Log.d(TAG, "视觉坐标校准: ($x, $y) → 可点击节点 \"${node.text}\" 中心(${rect.centerX()}, ${rect.centerY()})")
-                return Pair(rect.centerX().toFloat(), rect.centerY().toFloat())
+                val label = node.text?.toString()?.trim().orEmpty()
+                    .ifEmpty { node.contentDescription?.toString()?.trim().orEmpty() }
+                Log.d(TAG, "视觉坐标校准: ($x, $y) → 可点击节点 \"$label\" 中心(${rect.centerX()}, ${rect.centerY()})")
+                return ClickableNear(rect.centerX().toFloat(), rect.centerY().toFloat(), label)
             }
         }
         // 递归检查子节点

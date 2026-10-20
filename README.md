@@ -153,9 +153,12 @@ cd AutoTask
 | 通义千问 | qwen-max | https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions | 有额度 |
 | OpenAI | gpt-4o-mini | https://api.openai.com/v1/chat/completions | ❌ |
 | DeepSeek | deepseek-chat | https://api.deepseek.com/v1/chat/completions | 有额度 |
-| 智谱 GLM | glm-4 | https://open.bigmodel.cn/api/paas/v4/chat/completions | 有额度 |
+| 智谱 GLM（文本） | glm-4.7-flash | https://open.bigmodel.cn/api/paas/v4/chat/completions | ✅ 免费 |
+| 智谱 GLM（视觉） | glm-4v-flash | https://open.bigmodel.cn/api/paas/v4/chat/completions | ✅ 免费 |
 | Moonshot | moonshot-v1-8k | https://api.moonshot.cn/v1/chat/completions | 有额度 |
 | 字节豆包 | ep-xxxxxxxx | https://ark.cn-beijing.volces.com/api/v3/chat/completions | 有额度 |
+
+> 免费模型实测与真机避坑见根目录 `DEV_NOTES.md`。免费档有 QPS 限制，遇到 429 会自动等待重试。
 
 ### 创建任务
 
@@ -214,6 +217,8 @@ cd AutoTask
 | 通知 | 显示服务运行状态 |
 
 ## 开发说明
+
+构建命令、真机调试坑、免费模型组合、执行链路说明都在根目录 [DEV_NOTES.md](DEV_NOTES.md)。
 
 ### 关键类说明
 
