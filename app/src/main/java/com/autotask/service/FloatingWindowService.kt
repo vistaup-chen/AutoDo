@@ -147,6 +147,8 @@ class FloatingWindowService : Service() {
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
+        pendingHide = null
         hideFloatingWindow()
         teachCallback = null
         debugCallback = null

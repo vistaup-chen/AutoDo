@@ -609,17 +609,16 @@ class MainActivity : AppCompatActivity() {
 
         Toast.makeText(this, "开始执行: ${task.name}", Toast.LENGTH_SHORT).show()
 
-        lifecycleScope.launch {
-            val result = taskExecutor.executeTask(task)
+        taskExecutor.executeAsync(task) { result ->
             repository.updateTaskResult(task.id, result.success)
-
-            if (result.success) {
-                Toast.makeText(this@MainActivity, "✓ ${task.name} 执行成功", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this@MainActivity, "✗ ${task.name} 执行失败: ${result.message}", Toast.LENGTH_LONG).show()
+            if (!isFinishing && !isDestroyed) {
+                if (result.success) {
+                    Toast.makeText(this@MainActivity, "✓ ${task.name} 执行成功", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "✗ ${task.name} 执行失败: ${result.message}", Toast.LENGTH_LONG).show()
+                }
+                refreshTaskList()
             }
-
-            refreshTaskList()
         }
     }
 
@@ -632,12 +631,13 @@ class MainActivity : AppCompatActivity() {
         if (ensureVisionScreenshotPermission()) return
 
         binding.btnStartAll.isEnabled = false
-        lifecycleScope.launch {
+        // 批量执行也放在 TaskExecutor 自己的作用域，切到目标 App 后 Activity 被回收不会中断
+        taskExecutor.launchBatch {
             try {
                 val tasks = repository.getEnabledTasks()
                 if (tasks.isEmpty()) {
                     Toast.makeText(this@MainActivity, "没有启用的任务", Toast.LENGTH_SHORT).show()
-                    return@launch
+                    return@launchBatch
                 }
 
                 Log.i(TAG, "一键执行开始：共 ${tasks.size} 个任务")
@@ -659,11 +659,15 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 Log.i(TAG, "一键执行完成：$successCount 成功, $failCount 失败")
-                Toast.makeText(this@MainActivity, "执行完成: $successCount 成功, $failCount 失败", Toast.LENGTH_LONG).show()
+                if (!isFinishing && !isDestroyed) {
+                    Toast.makeText(this@MainActivity, "执行完成: $successCount 成功, $failCount 失败", Toast.LENGTH_LONG).show()
+                }
             } finally {
-                binding.btnStartAll.isEnabled = true
-                binding.btnStartAll.text = "一键执行"
-                refreshTaskList()
+                if (!isFinishing && !isDestroyed) {
+                    binding.btnStartAll.isEnabled = true
+                    binding.btnStartAll.text = "一键执行"
+                    refreshTaskList()
+                }
             }
         }
     }

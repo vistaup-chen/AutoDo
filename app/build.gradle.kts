@@ -56,4 +56,6 @@ dependencies {
 
     // 中文转拼音
     implementation("com.github.promeg:tinypinyin:2.0.3")
+
+    testImplementation("junit:junit:4.13.2")
 }

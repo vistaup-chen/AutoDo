@@ -15,8 +15,11 @@ import com.autotask.config.TaskResult
 import com.autotask.config.TaskStep
 import com.autotask.model.ElementLocation
 import com.autotask.model.ModelClient
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -138,6 +141,52 @@ class TaskExecutor(
     @Volatile
     private var shouldStop = false
 
+    // 执行协程不挂在 Activity 的 lifecycleScope 上：切换应用/Activity 被回收时任务仍能跑完
+    private val executionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
+
+    /**
+     * 后台执行单个任务，结果回主线程
+     */
+    fun executeAsync(task: AutomationTask, onFinished: suspend (TaskResult) -> Unit) {
+        executionScope.launch {
+            val result = executeTask(task)
+            onFinished(result)
+        }
+    }
+
+    /**
+     * 在独立作用域里执行批量流程（一键执行）
+     */
+    fun launchBatch(block: suspend () -> Unit) {
+        executionScope.launch { block() }
+    }
+
+    private fun acquireWakeLock() {
+        try {
+            val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            wakeLock = pm.newWakeLock(
+                android.os.PowerManager.SCREEN_DIM_WAKE_LOCK,
+                "AutoTask:execution"
+            ).apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "获取屏幕常亮锁失败: ${e.message}")
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            wakeLock?.let { if (it.isHeld) it.release() }
+        } catch (e: Exception) {
+            Log.w(TAG, "释放屏幕常亮锁失败: ${e.message}")
+        }
+        wakeLock = null
+    }
+
     /**
      * 执行单个任务
      */
@@ -150,6 +199,8 @@ class TaskExecutor(
         isExecuting = true
         shouldStop = false
         refreshConfigIfChanged()
+        // 长任务执行期间息屏会导致截图/手势失败，执行期间保持屏幕常亮
+        acquireWakeLock()
         Log.i(TAG, "===== 开始执行任务「${task.name}」（${task.steps.size} 步，包名=${task.packageName}）=====")
 
         val stepResults = mutableListOf<StepResult>()
@@ -282,13 +333,15 @@ class TaskExecutor(
                 if (success) "全部步骤执行成功" else "部分步骤失败"))
 
         } catch (e: kotlinx.coroutines.CancellationException) {
-            // Activity 销毁/协程取消不是任务失败，向上传播让结构化并发正常收尾
+            // 协程取消不是任务失败，向上传播让结构化并发正常收尾
             isExecuting = false
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "任务执行异常: ${e.message}", e)
             isExecuting = false
             return finish(TaskResult(task, false, stepResults, totalSteps, currentStep, "执行异常: ${e.message}"))
+        } finally {
+            releaseWakeLock()
         }
     }
 
@@ -471,6 +524,8 @@ class TaskExecutor(
      */
     private suspend fun clickByAccessibility(step: TaskStep): StepResult {
         val targetText = step.targetText.ifEmpty { step.hint }
+        val maxRetries = config.maxRetries.coerceIn(1, 10)
+        val deadline = System.currentTimeMillis() + config.stepTimeoutMs.coerceAtLeast(3000)
 
         // 1. 立即查找 + 等待重试（元素可能异步加载/延迟出现）
         var node = AutoTaskAccessibilityService.findNodeByText(targetText)
@@ -478,12 +533,12 @@ class TaskExecutor(
             Log.d(TAG, "首次未找到「$targetText」，等待重试")
         }
         var retry = 0
-        while (node == null && retry < 3) {
+        while (node == null && retry < maxRetries && System.currentTimeMillis() < deadline) {
             delay(600)
             node = AutoTaskAccessibilityService.findNodeByText(targetText)
             retry++
             if (node == null) {
-                Log.d(TAG, "重试 $retry/3 仍未找到「$targetText」")
+                Log.d(TAG, "重试 $retry/$maxRetries 仍未找到「$targetText」")
             }
         }
         if (node != null) {
@@ -493,7 +548,7 @@ class TaskExecutor(
         // 2. 目标可能在屏幕外：上下交替滚动查找
         Log.d(TAG, "未找到「$targetText」，尝试滚动查找")
         var scrollCount = 0
-        while (scrollCount < 4) {
+        while (scrollCount < maxRetries && System.currentTimeMillis() < deadline) {
             scrollPage(down = scrollCount % 2 == 0)
             delay(800)
             node = AutoTaskAccessibilityService.findNodeByText(targetText)

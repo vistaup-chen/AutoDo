@@ -98,6 +98,11 @@ adb logcat -s AT-TaskExecutor:V AT-ModelClient:V AT-A11y:V AT-Screenshot:V AT-Ma
 - 调试悬浮窗改为 85% 宽 + 2×2 按钮，避免文字被压没
 - 429 重试改为 2s/4s/6s 并尊重 Retry-After，读超时 60 秒
 - 视觉任务执行前若未授权，先请求截屏权限并中止本次执行，避免授权竞态
+- 执行协程改挂 TaskExecutor 自己的作用域（不再跟随 Activity lifecycleScope），切应用/Activity 回收不中断任务
+- 执行期间持有 SCREEN_DIM WakeLock，避免长任务息屏导致截图/手势失败
+- 修复“自动切换模型”开关未绑定、maxRetries/stepTimeoutMs 配置不生效
+- 解析 loading 对话框在页面退出时正确关闭；悬浮窗 Handler 在销毁时清理
+- 抽取 SearchTerms 纯函数并补 6 个单元测试（`./gradlew testDebugUnitTest`）
 - 权限引导改为链式（从系统设置返回后自动继续下一项），可选项只问一次
 - 通知 ID 去重（无障碍 1001 / 悬浮窗 1002 / 截图 1003）
 - MainActivity 固定竖屏，避免旋转重建导致执行中断
@@ -127,8 +132,8 @@ adb logcat -s AT-TaskExecutor:V AT-ModelClient:V AT-A11y:V AT-Screenshot:V AT-Ma
 
 ## 8. 还可以继续做的
 
-- 把任务执行搬到前台 Service（目前挂在 Activity 的 lifecycleScope，Activity 被回收会中断任务）
+- 更彻底的前台 Service 执行（当前协程已脱离 Activity，但进程被系统杀掉仍会中断）
 - 视觉定位加缓存/差异检测，减少重复截图请求
 - 按屏幕区域裁剪视觉输入（只发下半屏/目标区域），进一步降 token
-- 多任务执行失败后的跳过策略可配置
-- 补充单元测试（JSON 解析、坐标映射、方向解析）
+- 多任务执行失败后的跳过策略可配置（无人值守时不想每次等 120 秒调试窗）
+- 继续补单元测试（坐标映射、JSON 解析、方向解析）

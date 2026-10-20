@@ -92,40 +92,7 @@ class AutoTaskAccessibilityService : AccessibilityService() {
             }
         }
 
-        // 搜索词的通用后缀（"我的按钮" → "我的"），避免每次查找都重新编译正则
-        private val SUFFIX_REGEX = Regex("(按钮|图标|输入框|输入|链接|选项|文字|区域|入口|标签|卡片|菜单|列表|标题|Tab|tab|页签)$")
-
-        // "数字1按钮"这类描述去掉前缀后才能对上节点文本 "1"
-        private val PREFIX_REGEX = Regex("^(数字|文字|按键|按钮|图标|选项|菜单|标签|输入框)")
-
-        // AI 常把符号按钮描述成"加号/等号"，节点上却是"加/等于"或符号本身
-        private val SYMBOL_ALIASES = mapOf(
-            "加号" to listOf("加", "+"),
-            "等号" to listOf("等于", "="),
-            "减号" to listOf("减", "-"),
-            "乘号" to listOf("乘", "×", "*"),
-            "除号" to listOf("除", "÷"),
-            "小数点" to listOf(".", "点")
-        )
-
-        /**
-         * 由 AI/用户的描述生成查找候选：
-         * 原文 → 去通用后缀 → 去"数字/按钮"前缀 → 常见符号同义词
-         */
-        private fun buildSearchTerms(text: String): List<String> {
-            val terms = LinkedHashSet<String>()
-            terms.add(text)
-
-            val stripped = text.replace(SUFFIX_REGEX, "").trim()
-            if (stripped.isNotEmpty()) terms.add(stripped)
-
-            val noPrefix = stripped.replace(PREFIX_REGEX, "").trim()
-            if (noPrefix.isNotEmpty()) terms.add(noPrefix)
-
-            SYMBOL_ALIASES[stripped]?.let { terms.addAll(it) }
-            SYMBOL_ALIASES[noPrefix]?.let { terms.addAll(it) }
-            return terms.toList()
-        }
+        // 搜索词候选生成逻辑见 com.autotask.util.SearchTerms
 
         fun click(x: Float, y: Float, callback: ((Boolean) -> Unit)? = null) {
             instance?.dispatchClick(x, y, callback)
@@ -362,7 +329,7 @@ class AutoTaskAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return null
 
         // 搜索词候选：原文 + 去后缀 + 去"数字/按钮"前缀 + 符号同义词
-        val terms = buildSearchTerms(text)
+        val terms = com.autotask.util.SearchTerms.build(text)
 
         for (term in terms) {
             val matches = try {
@@ -471,7 +438,7 @@ class AutoTaskAccessibilityService : AccessibilityService() {
         // 搜索词包含节点文本（防误伤：节点文本至少 2 个字符）
         if (s.contains(n, ignoreCase = true) && n.length >= 2) return true
         // 去掉搜索词的通用后缀再匹配
-        val stripped = s.replace(SUFFIX_REGEX, "").trim()
+        val stripped = com.autotask.util.SearchTerms.stripSuffix(s)
         if (stripped.length >= 2) {
             if (n.contains(stripped, ignoreCase = true)) return true
             if (stripped.contains(n, ignoreCase = true)) return true

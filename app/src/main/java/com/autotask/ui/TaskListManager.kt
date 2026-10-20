@@ -1005,7 +1005,6 @@ class TaskListManager(
         scope.launch {
             try {
                 val steps = textClient.parseTextToSteps(description, packageName)
-                loadingDialog.dismiss()
                 if (steps.isEmpty()) {
                     Toast.makeText(context, "AI 解析失败，请尝试更详细的描述", Toast.LENGTH_SHORT).show()
                     return@launch
@@ -1051,10 +1050,14 @@ class TaskListManager(
                     .setNegativeButton("取消", null)
                     .show()
 
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                loadingDialog.dismiss()
                 Log.e(TAG, "解析描述失败: ${e.message}")
                 Toast.makeText(context, "解析失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                // 页面退出/协程取消时也要关掉 loading，避免窗口泄漏
+                if (loadingDialog.isShowing) loadingDialog.dismiss()
             }
         }
     }

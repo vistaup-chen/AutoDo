@@ -145,6 +145,9 @@ class SettingsActivity : AppCompatActivity() {
         binding.rbVision.setOnCheckedChangeListener { _, isChecked ->
             if (isChecked) onSettingsChanged("vision")
         }
+
+        // 自动切换模型开关（原先没有绑定，改了不生效）
+        binding.switchAutoSwitch.setOnCheckedChangeListener { _, _ -> onSettingsChanged() }
     }
 
     /**
@@ -627,6 +630,9 @@ class SettingsActivity : AppCompatActivity() {
         binding.switchUnifiedModel.isChecked = config.unifiedModel
         updateVisionCardVisibility(config.unifiedModel)
 
+        // 自动切换模型开关
+        binding.switchAutoSwitch.isChecked = config.autoSwitchModel
+
         isApplyingSettings = false
 
         // 强制重测列表高度：ScrollView 嵌套 RecyclerView 时首次布局高度常测不够，
@@ -675,6 +681,7 @@ class SettingsActivity : AppCompatActivity() {
             waitAfterLaunchMs = binding.etLaunchWait.text.toString().toLongOrNull() ?: 3000,
             waitBetweenTasksMs = binding.etBetweenTasksWait.text.toString().toLongOrNull() ?: 2000,
             strategy = strategy,
+            autoSwitchModel = binding.switchAutoSwitch.isChecked,
             unifiedModel = binding.switchUnifiedModel.isChecked
         )
 
