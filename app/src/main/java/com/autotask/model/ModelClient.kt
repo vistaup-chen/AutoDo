@@ -30,8 +30,9 @@ class ModelClient(private val config: ModelConfig) {
         private val sharedClient: OkHttpClient by lazy {
             OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(15, TimeUnit.SECONDS)
+                // 免费模型带思考过程时响应较慢，30 秒容易误判超时
+                .readTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(20, TimeUnit.SECONDS)
                 .build()
         }
         private val gson = Gson()
@@ -190,7 +191,8 @@ class ModelClient(private val config: ModelConfig) {
                 - x1/y1/x2/y2 必须框住整个目标元素的完整矩形（不要只框文字，要框住整个可点击区域）
                 - 坐标必须与图片像素一一对应，不要做任何缩放或换算
                 - confidence表示确定程度，不确定时降低confidence
-                - 找不到返回 {"x1": -1, "y1": -1, "x2": -1, "y2": -1, "confidence": 0}
+                - 如果图中没有该元素，必须返回 {"x1": -1, "y1": -1, "x2": -1, "y2": -1, "confidence": 0}
+                - 禁止猜测坐标；框太小或无法确认时一律按不存在处理
                 - 只返回JSON，不要其他文字
             """.trimIndent()
 
@@ -240,6 +242,7 @@ class ModelClient(private val config: ModelConfig) {
                 - x1/y1/x2/y2 必须框住每个目标元素的完整矩形
                 - 每个元素都要有confidence
                 - 找不到返回 []
+                - 禁止猜测坐标；框太小或无法确认的元素不要返回
                 - 只返回JSON
             """.trimIndent()
 
@@ -459,9 +462,12 @@ class ModelClient(private val config: ModelConfig) {
             // 429 频率限制，等待后重试（1s、2s、3s，避免总等待过长）
             if (response.code == 429 && retryCount < maxRetries) {
                 retryCount++
-                val waitTime = 1000L * retryCount // 等待 1秒、2秒、3秒
+                // 优先听服务端的 Retry-After；没有则按 2s/4s/6s 递增（免费档 1s 间隔太短）
+                val retryAfterMs = response.header("Retry-After")
+                    ?.toLongOrNull()?.times(1000)
+                val waitTime = retryAfterMs ?: (2000L * retryCount)
                 statusListener?.invoke("遇到限流(429)，${waitTime / 1000} 秒后重试($retryCount/$maxRetries)...")
-                Log.w(TAG, "429 频率限制，等待 ${waitTime}ms 后重试 ($retryCount/$maxRetries)")
+                Log.w(TAG, "429 频率限制，等待 ${waitTime}ms 后重试 ($retryCount/$maxRetries): ${response.peekBody(512).string()}")
                 Thread.sleep(waitTime)
                 continue
             }
@@ -511,8 +517,21 @@ class ModelClient(private val config: ModelConfig) {
             val y1 = obj.get("y1")?.asInt
             val x2 = obj.get("x2")?.asInt
             val y2 = obj.get("y2")?.asInt
+            val confidence = obj.get("confidence")?.asFloat ?: 1f
+
+            if (confidence < 0.6f) {
+                Log.w(TAG, "视觉置信度过低($confidence)，按未找到处理: $json")
+                return ElementLocation(-1, -1)
+            }
 
             val (x, y) = if (x1 != null && y1 != null && x2 != null && y2 != null) {
+                // 模型偶尔会对不存在的元素编造一个小框，尺寸过小直接判无效
+                val area = (x2 - x1).toLong() * (y2 - y1).toLong()
+                val minArea = maxX.toLong() * maxY.toLong() / 1000
+                if (area in 1 until minArea) {
+                    Log.w(TAG, "视觉框过小(${x2 - x1}x${y2 - y1})，判定为幻觉: $json")
+                    return ElementLocation(-1, -1)
+                }
                 ((x1 + x2) / 2) to ((y1 + y2) / 2)
             } else {
                 (obj.get("x")?.asInt ?: -1) to (obj.get("y")?.asInt ?: -1)
@@ -535,14 +554,19 @@ class ModelClient(private val config: ModelConfig) {
         return try {
             val json = extractJsonFromResponse(response)
             val array = gson.fromJson(json, JsonArray::class.java)
-            array.map { elem ->
+            array.mapNotNull { elem ->
                 val obj = elem.asJsonObject
+                val confidence = obj.get("confidence")?.asFloat ?: 1f
+                if (confidence < 0.6f) return@mapNotNull null
+
                 // bbox 优先，兼容单点
                 val x1 = obj.get("x1")?.asInt
                 val y1 = obj.get("y1")?.asInt
                 val x2 = obj.get("x2")?.asInt
                 val y2 = obj.get("y2")?.asInt
                 if (x1 != null && y1 != null && x2 != null && y2 != null) {
+                    val area = (x2 - x1).toLong() * (y2 - y1).toLong()
+                    if (area in 1 until maxX.toLong() * maxY.toLong() / 1000) return@mapNotNull null
                     ElementLocation((x1 + x2) / 2, (y1 + y2) / 2)
                 } else {
                     ElementLocation(

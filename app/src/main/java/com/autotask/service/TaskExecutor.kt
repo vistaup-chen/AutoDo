@@ -168,6 +168,16 @@ class TaskExecutor(
                     result.success,
                     false
                 )
+                // 任务结束后自动收起悬浮窗，否则会挡住其他应用的点击区域
+                try {
+                    context.startService(
+                        Intent(context, FloatingWindowService::class.java)
+                            .putExtra("action", "hide_delayed")
+                            .putExtra("delay_ms", 5000L)
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "安排悬浮窗自动隐藏失败: ${e.message}")
+                }
             }
             return result
         }

@@ -134,10 +134,17 @@ class SettingsActivity : AppCompatActivity() {
         binding.etLaunchWait.addTextChangedListener(textWatcher)
         binding.etBetweenTasksWait.addTextChangedListener(textWatcher)
 
-        // 策略单选
-        binding.rbAuto.setOnCheckedChangeListener { _, isChecked -> if (isChecked) onSettingsChanged() }
-        binding.rbAccessibility.setOnCheckedChangeListener { _, isChecked -> if (isChecked) onSettingsChanged() }
-        binding.rbVision.setOnCheckedChangeListener { _, isChecked -> if (isChecked) onSettingsChanged() }
+        // 策略单选：必须显式传策略值。
+        // RadioGroup 先选中新按钮再清除旧按钮，此时读 isChecked 会读到旧的"自动"，导致策略永远保存成 auto
+        binding.rbAuto.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) onSettingsChanged("auto")
+        }
+        binding.rbAccessibility.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) onSettingsChanged("accessibility")
+        }
+        binding.rbVision.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) onSettingsChanged("vision")
+        }
     }
 
     /**
@@ -279,9 +286,12 @@ class SettingsActivity : AppCompatActivity() {
                 },
                 onSelect = { pos ->
                     android.util.Log.d(TAG, ">>> 切换当前: pos=$pos 模型=${textModels.getOrNull(pos)?.modelName} 列表=${textModels.map { it.modelName }} size=${textModels.size}")
+                    // 先保存编辑区内容，再切换；否则用户刚填的 Key/地址会丢
+                    syncModelFormsToLists()
                     currentTextIndex = pos
-                    // 只切换"当前"标记，表单保持不动（表单是独立编辑区，与列表解耦）
                     textAdapter?.notifyDataSetChanged()
+                    // 表单跟随切换后的模型，避免"切了列表但编辑区还是旧模型"
+                    loadModelToEditArea()
                     persistTextModels()
                     // 强制重测：ScrollView 嵌套 RecyclerView 时切换后可能不重新测量高度，导致部分 item 显示不出来
                     binding.rvTextModels.post { binding.rvTextModels.requestLayout() }
@@ -379,9 +389,10 @@ class SettingsActivity : AppCompatActivity() {
                 },
                 onSelect = { pos ->
                     android.util.Log.d(TAG, ">>> [视觉] 切换当前: pos=$pos 模型=${visionModels.getOrNull(pos)?.modelName} 列表=${visionModels.map { it.modelName }} size=${visionModels.size}")
+                    syncModelFormsToLists()
                     currentVisionIndex = pos
-                    // 只切换"当前"标记，表单保持不动（与列表解耦）
                     visionAdapter?.notifyDataSetChanged()
+                    loadModelToEditArea()
                     persistVisionModels()
                     binding.rvVisionModels.post { binding.rvVisionModels.requestLayout() }
                 },
@@ -437,6 +448,38 @@ class SettingsActivity : AppCompatActivity() {
 
         // 加载当前模型配置到编辑区
         loadCurrentModelConfig(config)
+    }
+
+    /**
+     * 编辑区内容写回当前模型。
+     * 加载/切换表单期间由 isApplyingSettings 屏蔽，避免把半填状态写回
+     */
+    private fun syncModelFormsToLists() {
+        if (isApplyingSettings) return
+
+        if (currentTextIndex in textModels.indices) {
+            val updated = textModels[currentTextIndex].copy(
+                modelName = binding.etTextModelName.text.toString().trim(),
+                apiBase = binding.etTextApiBase.text.toString().trim(),
+                apiKey = binding.etTextApiKey.text.toString().trim()
+            )
+            if (updated != textModels[currentTextIndex]) {
+                textModels[currentTextIndex] = updated
+                textAdapter?.notifyDataSetChanged()
+            }
+        }
+
+        if (currentVisionIndex in visionModels.indices) {
+            val updated = visionModels[currentVisionIndex].copy(
+                modelName = binding.etVisionModelName.text.toString().trim(),
+                apiBase = binding.etVisionApiBase.text.toString().trim(),
+                apiKey = binding.etVisionApiKey.text.toString().trim()
+            )
+            if (updated != visionModels[currentVisionIndex]) {
+                visionModels[currentVisionIndex] = updated
+                visionAdapter?.notifyDataSetChanged()
+            }
+        }
     }
 
     private fun loadModelToEditArea() {
@@ -603,19 +646,20 @@ class SettingsActivity : AppCompatActivity() {
     /**
      * 任何设置项改动后立即保存（去掉"保存设置"按钮，改完即生效）
      */
-    private fun onSettingsChanged() {
+    private fun onSettingsChanged(strategyOverride: String? = null) {
         if (isApplyingSettings) return
 
-        // 模型表单是独立编辑区，不再自动写回列表（点列表切换"当前"、点添加提交为新模型），
-        // 这里只保存执行参数/策略/开关等全局设置
-        android.util.Log.d(TAG, "onSettingsChanged: 保存全局设置 文本列表=${textModels.map { it.modelName }} size=${textModels.size} current=$currentTextIndex")
+        // 表单就是当前模型的编辑区：每次改动先写回模型列表，再整体持久化，
+        // 避免用户填完 Key 直接退出导致内容丢失
+        syncModelFormsToLists()
 
-        val strategy = when {
+        val strategy = strategyOverride ?: when {
             binding.rbAuto.isChecked -> "auto"
             binding.rbAccessibility.isChecked -> "accessibility"
             binding.rbVision.isChecked -> "vision"
             else -> "auto"
         }
+        android.util.Log.d(TAG, "onSettingsChanged: 保存全局设置 strategy=$strategy 文本列表=${textModels.map { it.modelName }} size=${textModels.size} current=$currentTextIndex")
 
         // 用 copy 而不是重新构造：保留 autoSwitchModel 等没有对应控件的字段
         val newConfig = repository.getGlobalConfig().copy(

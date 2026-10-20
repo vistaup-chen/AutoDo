@@ -144,7 +144,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 val message = when {
                     isFirst -> "准备开始: $stepDesc"
-                    success == null -> "正在执行: $stepDesc"
+                    success == null -> stepDesc // TaskExecutor 已带"正在执行："前缀
                     success -> "✓ $stepDesc"
                     else -> "✗ $stepDesc"
                 }
@@ -329,20 +329,21 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * 执行前确保截图能力可用（API<30 需要 MediaProjection 授权）。
-     * 不阻塞任务：纯无障碍步骤可能仍然成功，只是失去视觉兜底
+     * @return true 表示刚刚请求了授权，本次执行应中止，授权后用户重新点执行
      */
-    private fun ensureVisionScreenshotPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) return
-        if (ScreenshotService.hasPermission()) return
-        if (repository.getGlobalConfig().strategy == "accessibility") return
+    private fun ensureVisionScreenshotPermission(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) return false
+        if (ScreenshotService.hasPermission()) return false
+        if (repository.getGlobalConfig().strategy == "accessibility") return false
 
         if (hasAskedScreenCapture) {
             Toast.makeText(this, "视觉识别不可用：可在「权限管理」中重新授予截屏权限", Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
         hasAskedScreenCapture = true
-        Toast.makeText(this, "视觉识别不可用：请授予截屏权限（仅影响视觉兜底）", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "请先授予截屏权限，授权后重新点击执行", Toast.LENGTH_LONG).show()
         ScreenshotService.requestPermission(this)
+        return true
     }
 
     private fun isIgnoringBatteryOptimizations(): Boolean {
@@ -604,7 +605,7 @@ class MainActivity : AppCompatActivity() {
             openAccessibilitySettings()
             return
         }
-        ensureVisionScreenshotPermission()
+        if (ensureVisionScreenshotPermission()) return
 
         Toast.makeText(this, "开始执行: ${task.name}", Toast.LENGTH_SHORT).show()
 
@@ -628,7 +629,7 @@ class MainActivity : AppCompatActivity() {
             openAccessibilitySettings()
             return
         }
-        ensureVisionScreenshotPermission()
+        if (ensureVisionScreenshotPermission()) return
 
         binding.btnStartAll.isEnabled = false
         lifecycleScope.launch {

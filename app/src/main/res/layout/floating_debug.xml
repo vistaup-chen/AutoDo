@@ -72,7 +72,7 @@
 
         </com.google.android.material.textfield.TextInputLayout>
 
-        <!-- 按钮组 -->
+        <!-- 按钮组：2x2 布局，保证文字完整显示 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -82,39 +82,46 @@
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_retry"
                 android:layout_width="0dp"
-                android:layout_height="36dp"
+                android:layout_height="40dp"
                 android:layout_weight="1"
                 android:text="重试"
-                android:textSize="11sp"
+                android:textSize="13sp"
                 style="@style/Widget.Material3.Button.OutlinedButton" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_manual"
                 android:layout_width="0dp"
-                android:layout_height="36dp"
+                android:layout_height="40dp"
                 android:layout_weight="1"
-                android:layout_marginStart="4dp"
+                android:layout_marginStart="8dp"
                 android:text="手动完成"
-                android:textSize="11sp"
+                android:textSize="13sp"
                 style="@style/Widget.Material3.Button.TonalButton" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_continue"
                 android:layout_width="0dp"
-                android:layout_height="36dp"
+                android:layout_height="40dp"
                 android:layout_weight="1"
-                android:layout_marginStart="4dp"
                 android:text="跳过"
-                android:textSize="11sp" />
+                android:textSize="13sp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btn_abort"
                 android:layout_width="0dp"
-                android:layout_height="36dp"
+                android:layout_height="40dp"
                 android:layout_weight="1"
-                android:layout_marginStart="4dp"
+                android:layout_marginStart="8dp"
                 android:text="终止"
-                android:textSize="11sp"
+                android:textSize="13sp"
                 android:backgroundTint="#C62828" />
 
         </LinearLayout>

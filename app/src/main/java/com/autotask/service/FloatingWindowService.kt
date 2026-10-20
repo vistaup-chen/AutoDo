@@ -71,6 +71,9 @@ class FloatingWindowService : Service() {
     private var totalSteps = 0
     private var currentHint = ""
 
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingHide: Runnable? = null
+
     // 记录最后一次执行窗口状态，用于截图后恢复显示
     private var lastExecuteProgress = 0
     private var lastExecuteTotal = 0
@@ -126,6 +129,7 @@ class FloatingWindowService : Service() {
                     reason = it.getStringExtra("reason") ?: ""
                 )
                 "hide" -> hideFloatingWindow()
+                "hide_delayed" -> scheduleHide(it.getLongExtra("delay_ms", 3000L))
                 "hide_for_screenshot" -> {
                     // 视觉定位截图前临时隐藏悬浮窗，避免遮挡屏幕干扰模型识别
                     hideFloatingWindow()
@@ -239,7 +243,8 @@ class FloatingWindowService : Service() {
     private fun showDebugWindow(hint: String, reason: String) {
         currentMode = MODE_DEBUG
         currentHint = hint
-        createFloatingWindow(R.layout.floating_debug)
+        // 调试窗按钮多，用更宽的窗口，避免按钮文字被压没
+        createFloatingWindow(R.layout.floating_debug, 0.85f)
 
         floatingView?.let { view ->
             val tvReason = view.findViewById<TextView>(R.id.tv_reason)
@@ -283,8 +288,25 @@ class FloatingWindowService : Service() {
 
     // ==================== 悬浮窗工具方法 ====================
 
-    private fun createFloatingWindow(layoutResId: Int) {
+    /** 任务结束后延时收起；有新窗口显示时会取消这个待执行任务 */
+    private fun scheduleHide(delayMs: Long) {
+        pendingHide?.let { mainHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            pendingHide = null
+            hideFloatingWindow()
+        }
+        pendingHide = runnable
+        mainHandler.postDelayed(runnable, delayMs)
+    }
+
+    private fun cancelPendingHide() {
+        pendingHide?.let { mainHandler.removeCallbacks(it) }
+        pendingHide = null
+    }
+
+    private fun createFloatingWindow(layoutResId: Int, widthRatio: Float = 0.6f) {
         Log.d(TAG, "创建悬浮窗: layout=$layoutResId")
+        cancelPendingHide()
         hideFloatingWindow()
 
         // 检查悬浮窗权限
@@ -311,7 +333,7 @@ class FloatingWindowService : Service() {
         // 若设 WRAP_CONTENT 会退化成内容宽度（消息短就变细条）
         // 取屏幕宽度的 60%，任何手机自适应
         val screenWidthPx = resources.displayMetrics.widthPixels
-        val floatWidthPx = (screenWidthPx * 0.6f).toInt().coerceAtLeast(280)
+        val floatWidthPx = (screenWidthPx * widthRatio).toInt().coerceAtLeast(280)
 
         params = WindowManager.LayoutParams(
             floatWidthPx,
