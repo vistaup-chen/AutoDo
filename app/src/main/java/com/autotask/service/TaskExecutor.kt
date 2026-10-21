@@ -632,8 +632,15 @@ class TaskExecutor(
     private suspend fun clickFoundNode(node: AccessibilityNodeInfo, step: TaskStep, successMsg: String): StepResult {
         // 找可点击的自身或祖先
         val clickTarget = AutoTaskAccessibilityService.findClickableSelfOrAncestor(node) ?: node
+        // 文字在子节点、点击事件在祖先（列表项/底部导航/自定义控件）时，
+        // performAction 经常返回成功但页面没反应，改用手势点文字中心（触摸会冒泡到可点击祖先）
+        val clickOnChildText = clickTarget !== node
         val rect = android.graphics.Rect()
-        clickTarget.getBoundsInScreen(rect)
+        if (clickOnChildText) {
+            node.getBoundsInScreen(rect)
+        } else {
+            clickTarget.getBoundsInScreen(rect)
+        }
 
         // 坐标有效性检查：bounds 无效（0,0 或不在屏幕内）说明节点数据失效，
         // 直接返回失败走视觉兜底，绝不能点 (0,0) 还报成功
@@ -648,18 +655,27 @@ class TaskExecutor(
             return StepResult(false, step, "节点坐标无效")
         }
 
-        val success = try {
-            clickTarget.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
-        } catch (e: Exception) {
-            false
-        }
-
-        if (!success) {
-            // 手势点击目标节点中心
+        val success = if (clickOnChildText) {
             dispatchGestureClick(rect.centerX().toFloat(), rect.centerY().toFloat())
+            true
+        } else {
+            val actionOk = try {
+                clickTarget.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+            } catch (e: Exception) {
+                false
+            }
+            if (!actionOk) {
+                dispatchGestureClick(rect.centerX().toFloat(), rect.centerY().toFloat())
+            }
+            actionOk
         }
 
-        Log.d(TAG, "$successMsg: 节点=\"${clickTarget.text}\" class=${clickTarget.className} 坐标=(${rect.centerX()}, ${rect.centerY()})")
+        Log.d(
+            TAG,
+            "$successMsg: 节点=\"${clickTarget.text}\" class=${clickTarget.className} " +
+                "坐标=(${rect.centerX()}, ${rect.centerY()})" +
+                if (clickOnChildText) " 手势点击(文字在子节点)" else ""
+        )
         clickTarget.recycle()
         if (clickTarget !== node) {
             node.recycle()
