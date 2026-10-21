@@ -678,7 +678,7 @@ class SettingsActivity : AppCompatActivity() {
             clickDelayMs = binding.etClickDelay.text.toString().toLongOrNull() ?: 1000,
             stepTimeoutMs = binding.etStepTimeout.text.toString().toLongOrNull() ?: 10000,
             maxRetries = binding.etMaxRetries.text.toString().toIntOrNull() ?: 3,
-            waitAfterLaunchMs = binding.etLaunchWait.text.toString().toLongOrNull() ?: 3000,
+            waitAfterLaunchMs = binding.etLaunchWait.text.toString().toLongOrNull() ?: 5000,
             waitBetweenTasksMs = binding.etBetweenTasksWait.text.toString().toLongOrNull() ?: 2000,
             strategy = strategy,
             autoSwitchModel = binding.switchAutoSwitch.isChecked,

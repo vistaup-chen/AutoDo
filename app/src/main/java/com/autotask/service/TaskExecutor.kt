@@ -265,7 +265,7 @@ class TaskExecutor(
                 if (autoLaunched) {
                     Log.i(TAG, "已自动启动目标应用: ${resolveLaunchPackage(task)}")
                     delay(config.waitAfterLaunchMs)
-                    dismissLaunchAd()
+                    handleLaunchOverlays()
                     // 等页面加载完成再开始执行步骤
                     waitForPageReady()
                 } else {
@@ -405,12 +405,36 @@ class TaskExecutor(
 
         return if (launched) {
             delay(config.waitAfterLaunchMs)
-            dismissLaunchAd()
+            handleLaunchOverlays()
             // 等页面真正加载完成再开始后续操作，避免冷启动白屏时点击失败
             waitForPageReady()
             StepResult(true, step, "应用已启动")
         } else {
             StepResult(false, step, "启动应用失败: ${task.packageName}")
+        }
+    }
+
+    /**
+     * 启动后的遮罩处理：先处理系统的"是否允许启动"确认框，再跳过开屏广告。
+     * 部分 ROM（如 MIUI）跨应用启动会弹"XX 正在尝试开启 YY，是否允许？"，不处理会挡住目标 App
+     */
+    private suspend fun handleLaunchOverlays() {
+        dismissSystemStartConfirm()
+        dismissLaunchAd()
+    }
+
+    private suspend fun dismissSystemStartConfirm() {
+        val dialog = AutoTaskAccessibilityService.findNodeByText("正在尝试开启") ?: return
+        dialog.recycle()
+        Log.i(TAG, "检测到系统启动确认框，尝试点击允许")
+
+        val allow = AutoTaskAccessibilityService.findNodeByText("允许") ?: return
+        val rect = android.graphics.Rect()
+        allow.getBoundsInScreen(rect)
+        allow.recycle()
+        if (rect.width() > 0 && rect.height() > 0) {
+            dispatchGestureClick(rect.centerX().toFloat(), rect.centerY().toFloat())
+            delay(500)
         }
     }
 
