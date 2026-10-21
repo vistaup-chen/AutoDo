@@ -265,6 +265,7 @@ class TaskExecutor(
                 if (autoLaunched) {
                     Log.i(TAG, "已自动启动目标应用: ${resolveLaunchPackage(task)}")
                     delay(config.waitAfterLaunchMs)
+                    dismissLaunchAd()
                     // 等页面加载完成再开始执行步骤
                     waitForPageReady()
                 } else {
@@ -404,11 +405,30 @@ class TaskExecutor(
 
         return if (launched) {
             delay(config.waitAfterLaunchMs)
+            dismissLaunchAd()
             // 等页面真正加载完成再开始后续操作，避免冷启动白屏时点击失败
             waitForPageReady()
             StepResult(true, step, "应用已启动")
         } else {
             StepResult(false, step, "启动应用失败: ${task.packageName}")
+        }
+    }
+
+    /**
+     * 启动后尝试关闭开屏广告：签到类 App 普遍有 3-5 秒广告，
+     * 只点"跳过/跳过广告"，不点"关闭"，避免误关业务弹窗
+     */
+    private suspend fun dismissLaunchAd() {
+        val adStep = TaskStep(StepAction.CLICK, hint = "跳过")
+        repeat(2) { attempt ->
+            val node = AutoTaskAccessibilityService.findNodeByText("跳过")
+                ?: AutoTaskAccessibilityService.findNodeByText("跳过广告")
+            if (node != null) {
+                clickFoundNode(node, adStep, "已跳过开屏广告")
+                Log.i(TAG, "启动后检测到开屏广告，已点击跳过")
+                return
+            }
+            if (attempt == 0) delay(1500)
         }
     }
 

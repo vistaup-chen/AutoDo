@@ -52,6 +52,7 @@ class StepListAdapter(
             "scroll" -> "滚动" to "#9C27B0"
             "back" -> "返回" to "#F44336"
             "launch" -> "启动" to "#607D8B"
+            "verify" -> "验证" to "#009688"
             else -> "其他" to "#757575"
         }
 

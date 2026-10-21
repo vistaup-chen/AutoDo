@@ -335,6 +335,12 @@ class ModelClient(private val config: ModelConfig) {
                - 示例：{"action": "launch"}
                - **特殊：如果描述是"打开/进入/使用 XX小程序"，launch 必须带 hint 标记小程序名：{"action": "launch", "hint": "小程序:龙湖天街"}（hint 格式固定为"小程序:名称"）**
 
+            7. **verify** - 验证操作结果或页面状态
+               - 用途：确认签到成功、页面是否跳转正确等
+               - hint：要验证的可见结果（如"页面显示签到成功"）
+               - 示例：{"action": "verify", "hint": "页面显示签到成功"}
+               - 只有描述里明确要求"确认/检查/验证结果"时才生成
+
             ## 重要规则
             - 描述中只要包含"打开/启动/进入/点开某个应用"，必须使用 **launch** 步骤，绝对禁止生成"点击APP图标"、"点击应用图标"这类 click 步骤
             - 描述中只要包含"XX小程序"（如"打开龙湖天街小程序"），第一步必须使用 {"action": "launch", "hint": "小程序:XX"}，禁止生成 click 步骤
@@ -365,7 +371,8 @@ class ModelClient(private val config: ModelConfig) {
             4. 如果描述中有"输入X"、"填写X"，使用 input 步骤
             5. 如果描述中有"滚动"、"滑动"、"上滑"、"下滑"，使用 scroll 步骤
             6. 如果描述中有"返回"、"后退"、"关闭"，使用 back 步骤
-            7. hint 要具体描述元素的视觉特征，方便后续识别
+            7. 如果描述中有"确认签到成功"、"验证结果"，在操作后追加 verify 步骤
+            8. hint 要具体描述元素的视觉特征，方便后续识别
 
             ## 示例
 
@@ -638,7 +645,11 @@ class ModelClient(private val config: ModelConfig) {
                     action = obj.get("action")?.asString ?: "click",
                     hint = obj.get("hint")?.asString ?: "",
                     duration = obj.get("duration")?.asLong ?: 3,
-                    inputText = obj.get("input_text")?.asString ?: obj.get("hint")?.asString ?: "",
+                    // 提示词示例用 inputText（驼峰），历史解析读 input_text，两种都兼容；
+                    // 不能回退到 hint，否则会把"搜索输入框"这种描述当成输入内容
+                    inputText = obj.get("input_text")?.asString
+                        ?: obj.get("inputText")?.asString
+                        ?: "",
                     // 提示词约定输出 direction，兼容历史字段 scroll_direction
                     scrollDirection = obj.get("direction")?.asString
                         ?: obj.get("scroll_direction")?.asString

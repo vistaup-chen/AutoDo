@@ -612,6 +612,7 @@ class TaskListManager(
                         "input" -> com.autotask.config.TaskStep(StepAction.INPUT, hint = stepInfo.hint, inputText = stepInfo.inputText)
                         "scroll" -> com.autotask.config.TaskStep(StepAction.SCROLL, hint = stepInfo.scrollDirection)
                         "back" -> com.autotask.config.TaskStep(StepAction.BACK)
+                        "verify" -> com.autotask.config.TaskStep(StepAction.VERIFY, hint = stepInfo.hint)
                         else -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
                     }
                 }
@@ -919,6 +920,7 @@ class TaskListManager(
                             "input" -> com.autotask.config.TaskStep(StepAction.INPUT, hint = stepInfo.hint, inputText = stepInfo.inputText)
                             "scroll" -> com.autotask.config.TaskStep(StepAction.SCROLL, hint = stepInfo.scrollDirection)
                             "back" -> com.autotask.config.TaskStep(StepAction.BACK)
+                            "verify" -> com.autotask.config.TaskStep(StepAction.VERIFY, hint = stepInfo.hint)
                             else -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
                         }
                     }
@@ -955,6 +957,7 @@ class TaskListManager(
                             "input" -> com.autotask.config.TaskStep(StepAction.INPUT, hint = stepInfo.hint, inputText = stepInfo.inputText)
                             "scroll" -> com.autotask.config.TaskStep(StepAction.SCROLL, hint = stepInfo.scrollDirection)
                             "back" -> com.autotask.config.TaskStep(StepAction.BACK)
+                            "verify" -> com.autotask.config.TaskStep(StepAction.VERIFY, hint = stepInfo.hint)
                             else -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
                         }
                     }
@@ -1036,6 +1039,7 @@ class TaskListManager(
                                 "input" -> com.autotask.config.TaskStep(StepAction.INPUT, hint = stepInfo.hint, inputText = stepInfo.inputText)
                                 "scroll" -> com.autotask.config.TaskStep(StepAction.SCROLL, hint = stepInfo.scrollDirection)
                                 "back" -> com.autotask.config.TaskStep(StepAction.BACK)
+                                "verify" -> com.autotask.config.TaskStep(StepAction.VERIFY, hint = stepInfo.hint)
                                 else -> com.autotask.config.TaskStep(StepAction.CLICK, hint = stepInfo.hint)
                             }
                         }
