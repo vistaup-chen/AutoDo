@@ -830,7 +830,13 @@ class TaskExecutor(
             }
         }
 
-        val success = inputText(step.inputText)
+        // 点击输入框后焦点/键盘切换需要时间，立即 setText 容易失败
+        delay(400)
+        var success = inputText(step.inputText)
+        if (!success) {
+            delay(300)
+            success = inputText(step.inputText)
+        }
         return if (success) {
             StepResult(true, step, "输入成功: ${step.inputText}")
         } else {
@@ -981,11 +987,23 @@ class TaskExecutor(
                     AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
                     text
                 )
-                val success = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+                var success = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+                if (!success) {
+                    // 部分自定义搜索框不支持 ACTION_SET_TEXT，改用剪贴板粘贴兜底
+                    Log.w(TAG, "ACTION_SET_TEXT 失败，尝试剪贴板粘贴: $text")
+                    try {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                            as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("autotask", text))
+                        success = target.performAction(AccessibilityNodeInfo.ACTION_PASTE)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "剪贴板粘贴失败: ${e.message}")
+                    }
+                }
                 target.recycle()
                 root.recycle()
                 if (!success) {
-                    Log.w(TAG, "ACTION_SET_TEXT 失败: $text")
+                    Log.w(TAG, "输入文本失败: $text")
                 }
                 success
             } else {
